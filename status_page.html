@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小暖运行状态</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #ffffff; --ink: #1d1d1b; --muted: #74746f; --line: #e6e5e0;
+    --accent: #2f7d5b; --accent-soft: #e3f1ea; --warn: #b4581c; --warn-soft: #fbeee3;
+    --err: #b42828; --err-soft: #f9e6e6; --info: #3b5b9a; --info-soft: #e7edf8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151614; --card: #1e1f1c; --ink: #ecebe6; --muted: #9a9a93; --line: #2e2f2b;
+      --accent: #6cc59a; --accent-soft: #1f3329; --warn: #f0a26b; --warn-soft: #3a2a1d;
+      --err: #f08a8a; --err-soft: #3a2020; --info: #94b2ea; --info-soft: #1f2838;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.55 -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: .01em; }
+  h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+  .conn { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .dot.on { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .dot.run { background: var(--warn); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 16px; margin-top: 18px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .stack > * + * { margin-top: 16px; }
+  .wf-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .wf-name { font-size: 16px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
+  .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+  .pill.off { background: var(--line); color: var(--muted); }
+  .pill.run { background: var(--warn-soft); color: var(--warn); }
+  .meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+  .meta div { background: var(--bg); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+  .meta b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .meta span { font-size: 12px; color: var(--muted); }
+  .goal { margin: 0 0 8px; }
+  ul.rules { margin: 0; padding-left: 18px; color: var(--muted); }
+  ul.rules li + li { margin-top: 2px; }
+  .empty { color: var(--muted); font-size: 13px; }
+  .held { border-left: 3px solid var(--warn); padding: 8px 10px; background: var(--warn-soft); border-radius: 6px; }
+  .held + .held { margin-top: 8px; }
+  .held .why { font-size: 12px; color: var(--warn); margin-top: 4px; }
+  .held pre, .ev pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+  .timeline { list-style: none; margin: 0; padding: 0; max-height: 70vh; overflow-y: auto; }
+  .ev { display: grid; grid-template-columns: 52px 74px minmax(0, 1fr); gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); }
+  .ev:first-child { border-top: 0; }
+  .ev time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; padding-top: 1px; }
+  .tag { font-size: 12px; border-radius: 6px; padding: 1px 6px; height: fit-content; text-align: center; background: var(--line); color: var(--muted); }
+  .tag.sent { background: var(--accent-soft); color: var(--accent); }
+  .tag.held { background: var(--warn-soft); color: var(--warn); }
+  .tag.error, .tag.goal_error { background: var(--err-soft); color: var(--err); }
+  .tag.goal_changed { background: var(--info-soft); color: var(--info); }
+  .tag.run_done { background: var(--info-soft); color: var(--info); }
+  .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  footer { margin-top: 20px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>小暖运行状态</h1>
+    <div class="conn"><span id="conn-dot" class="dot"></span><span id="conn">连接中…</span></div>
+  </header>
+
+  <div class="grid">
+    <div class="stack">
+      <section id="workflows"></section>
+      <section class="card">
+        <h2>扣下等你处理</h2>
+        <div id="held"><p class="empty">暂时没有</p></div>
+      </section>
+    </div>
+    <section class="card">
+      <h2>动态</h2>
+      <ul class="timeline" id="timeline"><li class="empty">还没有动态</li></ul>
+    </section>
+  </div>
+  <footer id="foot"></footer>
+</main>
+
+<script>
+const KIND = { sent: "已发出", held: "扣下", goal_changed: "改目标", goal_error: "出错", run: "巡检",
+               run_done: "处理完", error: "出错", scheduler: "启动" };
+let state = null;
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const hhmm = ts => ts ? new Date(ts * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "—";
+function ago(ts) {
+  if (!ts) return "还没跑过";
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 60) return `${Math.round(s)} 秒前`;
+  if (s < 3600) return `${Math.round(s / 60)} 分钟前`;
+  return hhmm(ts);
+}
+function until(ts) {
+  if (!ts) return "已暂停";
+  const s = ts - Date.now() / 1000;
+  if (s <= 0) return "就快了";
+  return s < 60 ? `${Math.round(s)} 秒后` : `${Math.round(s / 60)} 分钟后`;
+}
+
+function renderWorkflows() {
+  const box = document.getElementById("workflows");
+  box.innerHTML = state.workflows.map(w => {
+    const pill = w.running ? `<span class="pill run">正在处理</span>`
+               : w.enabled ? `<span class="pill">每 ${w.interval_min} 分钟</span>` : `<span class="pill off">已暂停</span>`;
+    const wait = state.user_busy ? "前台在跑你的指令" : (state.idle_seconds < 60 && w.enabled ? "你在用电脑，会稍后跑" : until(w.next_run));
+    return `<div class="card">
+      <div class="wf-head"><div class="wf-name"><span class="dot ${w.running ? "run" : w.enabled ? "on" : ""}"></span>${esc(w.name)}</div>${pill}</div>
+      <div class="meta">
+        <div><b>${ago(w.last_run)}</b><span>上次巡检</span></div>
+        <div><b>${esc(wait)}</b><span>下次</span></div>
+        <div><b>${state.held.length}</b><span>扣下的</span></div>
+      </div>
+      <h2>目标</h2><p class="goal">${esc(w.goal)}</p>
+      <h2>规则</h2><ul class="rules">${(w.rules || []).map(r => `<li>${esc(r)}</li>`).join("") || "<li>（没有）</li>"}</ul>
+    </div>`;
+  }).join("");
+}
+
+function renderHeld() {
+  const box = document.getElementById("held");
+  const items = state.held.slice().reverse();
+  box.innerHTML = items.length ? items.map(e => `<div class="held">
+      <pre>${esc(e.text.replace(/^扣下：/, ""))}</pre>
+      <div class="why">${hhmm(e.ts)} · ${esc(e.data?.why || "")}</div></div>`).join("")
+    : `<p class="empty">暂时没有</p>`;
+}
+
+function evDetail(e) {
+  const d = e.data || {};
+  if (e.kind === "goal_changed" && d.after) {
+    return `<details><summary>看改动</summary><pre>${esc(`你说：${d.user_said}\n\n目标：${d.after.goal}\n规则：\n- ${(d.after.rules || []).join("\n- ")}\n频率：每 ${d.after.interval_min} 分钟${d.after.enabled ? "" : "（已暂停）"}`)}</pre></details>`;
+  }
+  if (e.kind === "run" && d.items) {
+    return `<details><summary>${d.items.length} 个新情况</summary><pre>${esc(d.items.map(i => i.kind === "message"
+      ? `Lark「${i.chat}」：${i.preview}` : `微信好友申请「${i.name}」：${i.message}`).join("\n"))}</pre></details>`;
+  }
+  if (e.kind === "run_done" && d.actions && d.actions.length) {
+    return `<details><summary>${d.actions.length} 个操作</summary><pre>${esc(d.actions.join("\n"))}</pre></details>`;
+  }
+  if ((e.kind === "sent" || e.kind === "held") && d.why) return `<div class="sub">${esc(d.why)}</div>`;
+  return "";
+}
+
+function renderTimeline() {
+  const ul = document.getElementById("timeline");
+  const evs = state.events.filter(e => !(e.kind === "run" && !e.data?.items)).slice().reverse();
+  const quiet = state.events.filter(e => e.kind === "run" && !e.data?.items).length;
+  ul.innerHTML = evs.length ? evs.map(e => `<li class="ev">
+      <time>${hhmm(e.ts)}</time><span class="tag ${e.kind}">${KIND[e.kind] || e.kind}</span>
+      <div><pre>${esc(e.text.replace(/^(放行|扣下)：/, ""))}</pre>${evDetail(e)}</div></li>`).join("")
+    : `<li class="empty">还没有动态</li>`;
+  document.getElementById("foot").textContent =
+    `最近 ${quiet} 次巡检没有新情况（不在动态里显示）· 页面只在本机可见`;
+}
+
+function render() { if (!state) return; renderWorkflows(); renderHeld(); renderTimeline(); }
+
+async function poll() {
+  try { state = await (await fetch("/api/status")).json(); render(); } catch (e) { /* 服务没开 */ }
+}
+
+function connect() {
+  const es = new EventSource("/events");
+  const setConn = (on, text) => {
+    document.getElementById("conn-dot").className = "dot" + (on ? " on" : "");
+    document.getElementById("conn").textContent = text;
+  };
+  es.addEventListener("status", ev => { state = JSON.parse(ev.data); render(); setConn(true, "实时更新中"); });
+  es.addEventListener("event", ev => {
+    if (!state) return;
+    const e = JSON.parse(ev.data);
+    state.events.push(e);
+    if (e.kind === "held") state.held.push(e);
+    render();
+  });
+  es.onerror = () => { setConn(false, "连不上，正在重试…"); };
+}
+
+poll();
+connect();
+setInterval(() => state && renderWorkflows(), 1000);
+</script>
+</body>
+</html>
