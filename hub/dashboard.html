@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AMI 中控</title>
 <style>
   :root {
@@ -26,6 +26,7 @@
   a { color: inherit; }
   svg { flex: none; display: block; }
   [hidden] { display: none !important; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* ---------- 外框：左侧导航 + 右侧内容 ---------- */
   .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh;
@@ -46,6 +47,7 @@
   nav a.active svg { color: var(--accent); }
   nav .count { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   nav a.active .count { color: var(--accent); }
+  nav .nav-short { display: none; }
   .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 12px; }
   .conn { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; padding: 0 10px; }
   .me { display: flex; align-items: center; gap: 10px; padding: 12px 10px 0; border-top: 1px solid var(--line); }
@@ -55,16 +57,24 @@
   .content { padding: 32px 36px 64px; max-width: 1200px; width: 100%; }
   @media (max-width: 800px) {
     .shell { grid-template-columns: minmax(0, 1fr); background: none; }
-    aside { position: sticky; z-index: 5; height: auto; flex-direction: row; align-items: center; gap: 4px; padding: 8px 12px;
+    aside { position: sticky; z-index: 5; height: 52px; flex-direction: row; align-items: center; gap: 8px; padding: 0 8px 0 16px;
             border-right: 0; border-bottom: 1px solid var(--line); }
-    aside .brand { padding: 0 6px 0 0; } aside .brand > div:last-child { display: none; }
-    nav { flex-direction: row; flex: 1; min-width: 0; overflow-x: auto; }
-    nav a { padding: 7px 9px; gap: 6px; white-space: nowrap; } nav .count { display: none; }
-    .side-foot { margin: 0; flex-direction: row; } .conn { display: none; }
-    .me { border: 0; padding: 0; } .me span, .me .avatar { display: none; }
-    .content { padding: 20px 16px 56px; }
+    aside .brand { padding: 0; gap: 8px; } aside .brand .logo { width: 28px; height: 28px; border-radius: 8px; font-size: 13px; }
+    aside .brand small { display: none; }
+    nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; flex-direction: row; gap: 0; background: var(--side);
+          border-top: 1px solid var(--line); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); }
+    nav a { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 3px; padding: 6px 2px; font-size: 11px; line-height: 1.2; }
+    nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    nav a.active { background: none; } nav a:hover { background: none; }
+    nav .count { display: none; }
+    nav .nav-full { display: none; } nav .nav-short { display: inline; }
+    .side-foot { margin: 0 0 0 auto; flex-direction: row; align-items: center; gap: 4px; }
+    .conn { padding: 0 6px; } #conn { display: none; }
+    .me { border: 0; padding: 0; gap: 0; } .me span, .me .avatar { display: none; }
+    .content { padding: 20px 16px calc(84px + env(safe-area-inset-bottom)); }
+    .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
+    .new-pill { top: 64px; }
   }
-  @media (max-width: 480px) { nav a span { display: none; } nav a.active span { display: inline; } }
 
   /* ---------- 通用 ---------- */
   .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
@@ -112,7 +122,12 @@
   .stat:hover { border-color: var(--muted); }
   .stat span { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
   .stat b { display: block; font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; letter-spacing: -.02em; }
-  @media (max-width: 800px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+  @media (max-width: 800px) {
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .stat { padding: 12px 14px; } .stat b { font-size: 22px; }
+    .agent-card { padding: 14px 16px; gap: 8px; } .agent-card .summary { min-height: 0; } .agent-card .foot { padding-top: 8px; }
+    .section-title:has(.hint) { flex-wrap: wrap; } .section-title:has(.hint) .hint { flex-basis: 100%; text-align: left; }
+  }
 
   .alert { display: flex; gap: 12px; align-items: flex-start; border-radius: 12px; padding: 12px 16px; background: var(--err-soft); color: var(--err); }
   .alert b { font-weight: 600; }
@@ -183,7 +198,7 @@
   .card-head-link:hover { color: var(--accent); }
   @media (max-width: 800px) {
     .ev-stats { gap: 10px; } .ev-stats .stat { padding: 12px 14px; } .ev-stats .stat b { font-size: 22px; }
-    .toolbar select { flex: 1; } .day { top: 49px; }
+    .toolbar select { flex: 1; } .day { top: 52px; }
     .ev { grid-template-columns: 26px minmax(0, 1fr); gap: 10px; } .ev-ic { width: 26px; height: 26px; font-size: 12px; }
     .ev time { grid-column: 2; grid-row: 1; justify-self: end; } .ev .meta { padding-right: 44px; }
     .ev > div { grid-column: 2; grid-row: 1; }
@@ -285,7 +300,10 @@
     .task-row .pill { grid-column: 2; grid-row: 1; justify-self: end; } .task-row time { grid-column: 2; grid-row: 2; }
   }
   .mini-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
-  .mini-stats div { background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+  .mini-stats > * { background: var(--bg); border-radius: 10px; padding: 8px 10px; text-decoration: none; border: 1px solid transparent; transition: border-color .12s; }
+  .mini-stats a:hover { border-color: var(--line); }
+  .card > .mini-stats:last-child { margin-bottom: 0; }
+  .mini-stats .info b { color: var(--info); } .mini-stats .on-c b { color: var(--accent); } .mini-stats .error b { color: var(--err); }
   .mini-stats b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
   .mini-stats span { font-size: 12px; color: var(--muted); }
   pre.json { margin: 0; background: var(--bg); border-radius: 8px; padding: 10px 12px; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -528,6 +546,7 @@ const KIND = {
   done: "完成", goal_changed: "改目标", goal_error: "目标出错", error: "出错", warn: "告警", warning: "告警", log: "日志", info: "信息",
   scheduler: "启动", start: "启动", started: "启动", stop: "停止", stopped: "停止", heartbeat: "心跳",
 };
+const LEVEL_KINDS = ["warn", "warning", "error"];
 const EV_LEVELS = { "": "", attention: "warn,error", error: "error" };
 const TASK_ST = { queued: ["排队中", "info"], running: ["执行中", "on"], done: ["已完成", ""], failed: ["失败", "error"], canceled: ["已取消", ""], expired: ["已过期", ""] };
 const TASK_FINAL = ["done", "failed", "canceled", "expired"];
@@ -740,7 +759,7 @@ function timeline(withAgent, empty = "还没有动态。agent 发出事件后会
       : `<span class="ev-ic ${lvc}">${icon(e.level === "error" ? "x" : e.level === "warn" ? "alert" : "activity", 15)}</span>`;
     out += `<li class="ev ${lvc}${Date.now() - (fresh.get(e.id) || 0) < 2500 ? " fresh" : ""}" data-eid="${e.id}">${ic}<div>
       <div class="meta">${withAgent && a ? `<a class="who" href="#/agents/${a.id}">${esc(a.name)}</a>` : ""}
-        <span class="tag">${esc(KIND[e.kind] || e.kind)}</span>${lv ? `<span class="tag ${e.level}">${lv}</span>` : ""}</div>
+        ${lv && LEVEL_KINDS.includes(e.kind) ? "" : `<span class="tag">${esc(KIND[e.kind] || e.kind)}</span>`}${lv ? `<span class="tag ${e.level}">${lv}</span>` : ""}</div>
       ${text ? `<div class="text${long && !opened ? " clamp" : ""}">${esc(text)}</div>
         ${long ? `<button class="text-more" data-act="text-more" data-id="${e.id}">${opened ? "收起" : "展开全文"}</button>` : ""}` : ""}
       ${hasData ? `<details class="more-info" data-k="ev${e.id}"><summary>详情</summary><div class="box">${fv(e.data)}</div></details>`
@@ -783,6 +802,8 @@ function pageOverview() {
     ${bad.length ? `<div class="alert">${icon("alert", 18)}<div><b>${bad.length} 个 agent 出错：</b>${bad.map(a => `<a href="#/agents/${a.id}">${esc(a.name)}</a>`).join("、")}</div></div>` : ""}
     <section><div class="section-title"><h2>Agents</h2>${ls.length > 6 ? `<a href="#/agents" data-filter="all">查看全部 ${ls.length} 个 →</a>` : ""}</div>
       <div class="agent-grid">${ls.slice().sort(byAttention).slice(0, 6).map(agentCard).join("")}</div></section>
+    ${taskStats && taskStats.queued + taskStats.running + taskStats.done + taskStats.failed ? `<section class="card"><div class="section-title"><h2>任务</h2>
+      <a class="card-head-link" href="#/tasks" data-tk-status="">全部任务 →</a></div>${taskMini(taskStats)}</section>` : ""}
     <section class="card"><div class="section-title"><h2>最近动态</h2><a class="card-head-link" href="#/activity" data-ev-agent="">全部动态 →</a></div>${timeline(true)}</section>
   </div>`;
 }
@@ -830,8 +851,7 @@ function pageAgent() {
         <section class="card"><div class="section-title"><h2>任务</h2><a class="card-head-link" href="#/tasks" data-tk-agent="${a.id}">查看任务 →</a></div>
           <p class="muted" style="margin:-4px 0 12px;font-size:13px">${a.group ? `领「${esc(a.group)}」分组队列和公共池的任务；它提交的任务进「${esc(a.group)}」队列。`
             : "不分组：只领公共池的任务，它提交的任务也进公共池。"}下面是它发出或领过的任务。</p>
-          ${(c => `<div class="mini-stats">${[["queued", "排队中"], ["running", "执行中"], ["done", "24h 完成"], ["failed", "24h 失败"]].map(([k, l]) =>
-            `<div><b>${c ? c[k] : "–"}</b><span>${l}</span></div>`).join("")}</div>`)(scoped())}
+          ${taskMini(scoped(), a.id)}
           ${a.revoked ? "" : `<button class="btn sm" data-act="new-task" data-q="${esc(`${a.owner_id}:${a.group}`)}">${icon("send", 14)}派任务到它的队列</button>`}</section>
         <section class="card"><div class="section-title"><h2>API key</h2></div>${keyBox(a)}</section>
       </div>
@@ -923,6 +943,11 @@ function pageGuide() {
       </div></section></div>`;
 }
 
+// 四格任务统计，点一格跳到任务页并按状态（和 agent）筛选
+function taskMini(c, agentId = "") {
+  return `<div class="mini-stats">${[["queued", "排队中", "info"], ["running", "执行中", "on-c"], ["done", "24h 完成", ""], ["failed", "24h 失败", "error"]].map(([k, l, cls]) =>
+    `<a href="#/tasks" class="${c && c[k] ? cls : ""}" data-tk-status="${k}" data-tk-agent="${agentId}"><b>${c ? c[k] : "–"}</b><span>${l}</span></a>`).join("")}</div>`;
+}
 const newTaskBtn = (q = "") => `<button class="btn primary" data-act="new-task" data-q="${esc(q)}">${icon("send")}派任务</button>`;
 const who = (id, name) => id == null ? "控制台" : byId(id)?.name || name || `#${id}`;
 // 管理员看到不止一个人的数据时，才在各处标出属于谁
@@ -1025,7 +1050,6 @@ function pageTask() {
       <div class="title-row"><h1>${esc(t.kind)}</h1>${taskPill(t)}</div>
       <p>#${t.id} · ${esc(who(t.from_agent, t.from_name))} → ${esc(queueName(t.owner_name, t.group))} · ${esc(ago(t.created_at))}创建</p></div>
     <div class="head-actions">
-      <button class="btn" data-act="copy-json" data-w="payload">${icon("copy")}复制内容</button>
       ${final ? "" : `<button class="btn danger" data-act="task-cancel" data-id="${t.id}">${icon("ban")}取消</button>`}
       ${["failed", "canceled", "expired"].includes(t.status) ? `<button class="btn primary" data-act="task-retry" data-id="${t.id}">${icon("rotate")}重新派发</button>` : ""}
     </div></div>
@@ -1039,7 +1063,8 @@ function pageTask() {
           <div class="err-box${t.status === "failed" ? "" : " warn"}">${esc(t.error)}</div></section>` : ""}
         ${t.status === "done" || t.result != null ? `<section class="card"><div class="section-title"><h2>结果</h2>
           ${t.result != null ? `<a class="card-head-link" href="#" data-act="copy-json" data-w="result">${icon("copy", 14)}复制</a>` : ""}</div>${jsonBlock(t.result, "tr")}</section>` : ""}
-        <section class="card"><div class="section-title"><h2>任务内容</h2></div>${jsonBlock(t.payload, "tpl")}</section>
+        <section class="card"><div class="section-title"><h2>任务内容</h2>
+          ${t.payload != null ? `<a class="card-head-link" href="#" data-act="copy-json" data-w="payload">${icon("copy", 14)}复制</a>` : ""}</div>${jsonBlock(t.payload, "tpl")}</section>
       </div>
     </div>`;
 }
@@ -1066,11 +1091,13 @@ function pageUsers() {
     </ul></section></div>`;
 }
 
-const NAV = [["overview", "概览", "overview"], ["agents", "Agents", "agents"], ["activity", "动态", "activity"], ["tasks", "任务", "tasks"], ["keys", "API Keys", "key"], ["users", "用户", "users"], ["guide", "接入指南", "guide"]];
+// 第四项是手机底部标签栏里用的短名字
+const NAV = [["overview", "概览", "overview"], ["agents", "Agents", "agents"], ["activity", "动态", "activity"], ["tasks", "任务", "tasks"], ["keys", "API Keys", "key", "Keys"], ["users", "用户", "users"], ["guide", "接入指南", "guide", "指南"]];
 
 function render() {
   const n = live().length;
-  $("nav").innerHTML = NAV.filter(([p]) => p !== "users" || me?.is_admin).map(([p, l, ic]) => `<a href="#/${p}" class="${route.page === p ? "active" : ""}">${icon(ic)}<span>${l}</span>
+  $("nav").innerHTML = NAV.filter(([p]) => p !== "users" || me?.is_admin).map(([p, l, ic, short]) => `<a href="#/${p}" class="${route.page === p ? "active" : ""}">${icon(ic)}
+    ${short ? `<span class="nav-full">${l}</span><span class="nav-short">${short}</span>` : `<span>${l}</span>`}
     ${(p === "agents" || p === "keys") && n ? `<b class="count">${n}</b>` : ""}
     ${p === "tasks" && taskStats && taskStats.queued + taskStats.running ? `<b class="count" title="排队中 + 执行中">${taskStats.queued + taskStats.running}</b>` : ""}</a>`).join("");
   const page = { overview: pageOverview, agents: route.id ? pageAgent : pageAgents, activity: pageActivity, tasks: route.id ? pageTask : pageTasks,
@@ -1080,6 +1107,8 @@ function render() {
   const ae = document.activeElement, focusId = ae && ae.id && $("page").contains(ae) ? ae.id : null;
   const sel = focusId && ae.tagName === "INPUT" ? [ae.selectionStart, ae.selectionEnd] : null;
   $("page").innerHTML = page();
+  const bad = live().filter(a => health(a).group === "error").length, cur = NAV.find(([p]) => p === route.page);
+  document.title = `${bad ? `(${bad} 出错) ` : ""}${cur ? cur[1] + " · " : ""}AMI 中控`;
   open.forEach(k => { const d = document.querySelector(`#page details[data-k="${k}"]`); if (d) d.open = true; });
   if (focusId && $(focusId)) { $(focusId).focus(); if (sel) try { $(focusId).setSelectionRange(...sel); } catch {} }
   // 滚到底自动加载更早的动态
@@ -1281,8 +1310,8 @@ document.addEventListener("click", ev => {
   if (f) { ui.filter = f.dataset.filter; ui.q = ""; }
   const ea = ev.target.closest("[data-ev-agent]");
   if (ea) ui.ev = { agent: ea.dataset.evAgent, level: "", q: "" };
-  const ta = ev.target.closest("[data-tk-agent]");
-  if (ta) ui.tk = { status: "", queue: "", agent: ta.dataset.tkAgent, q: "" };
+  const ta = ev.target.closest("[data-tk-agent], [data-tk-status]");
+  if (ta) ui.tk = { status: ta.dataset.tkStatus || "", queue: "", agent: ta.dataset.tkAgent || "", q: "" };
   const t = ev.target.closest("[data-act]");
   if (!t) return;
   const id = Number(t.dataset.id);
@@ -1409,6 +1438,12 @@ $("pass-form").onsubmit = async ev => {
   $("pass-ok").disabled = false;
 };
 document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close());
+document.querySelectorAll("dialog").forEach(d => {
+  const outside = ev => { const r = d.getBoundingClientRect(); return ev.target === d && (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom); };
+  let down = false;
+  d.addEventListener("pointerdown", ev => { down = outside(ev); });
+  d.addEventListener("click", ev => { if (down && outside(ev)) d.id === "dlg-confirm" ? $("cf-cancel").click() : d.close(); down = false; });
+});
 
 /* ================= 路由 / 实时 / 登录 ================= */
 function parseRoute() {
@@ -1429,7 +1464,7 @@ window.addEventListener("hashchange", parseRoute);
 
 function connect() {
   if (es) es.close();
-  const setConn = (on, text) => { $("conn-dot").className = "dot" + (on ? " on" : ""); $("conn").textContent = text; };
+  const setConn = (on, text) => { $("conn-dot").className = "dot" + (on ? " on" : ""); $("conn").textContent = text; $("conn-dot").parentNode.title = text; };
   es = new EventSource("/api/stream");
   es.addEventListener("hello", () => {
     setConn(true, "实时更新中");
@@ -1483,6 +1518,7 @@ function showLogin(msg = "") {
   if (es) { es.close(); es = null; }
   document.querySelectorAll("dialog[open]").forEach(d => d.close());
   $("login-err").textContent = msg;
+  document.title = "AMI 中控";
   $("shell").hidden = true;
   $("login").hidden = false;
   $("login-user").focus();
