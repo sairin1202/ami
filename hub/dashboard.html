@@ -367,12 +367,54 @@
   .check { display: flex !important; align-items: center; gap: 8px; cursor: pointer; }
   .check input { width: auto; margin: 0; }
   .field-hint { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 1.2em; }
-  .field-hint.warn { color: var(--warn); }
+  .field-hint.warn { color: var(--warn); } .field-hint.ok { color: var(--accent); }
   dialog label { display: block; font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 14px 0 6px; }
   dialog label small { font-weight: 400; color: var(--muted); }
   dialog form > h3 + p { margin-bottom: 4px; }
   .form-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
   @media (max-width: 480px) { .form-row { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+
+  /* ---------- 每日自检 ---------- */
+  .alert-list { margin: 6px 0 0; padding-left: 18px; } .alert-list li + li { margin-top: 4px; }
+  .alert-list li { color: var(--ink-2); overflow-wrap: anywhere; } .alert-list li a { color: var(--err); }
+  .alert-foot { margin: 8px 0 0; font-size: 12px; color: var(--ink-2); }
+  .chk-line { font-size: 12px; color: var(--err); display: flex; gap: 6px; align-items: center; min-width: 0; margin-top: -4px; }
+  .chk-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sched { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; }
+  .sched input[type=time] { width: auto; padding: 4px 8px; }
+  .sched input[type=time]:disabled { opacity: .5; }
+  .sched .btn { margin-left: auto; }
+  .chk-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+  .chk-head a { color: inherit; } .chk-head a:hover { color: var(--accent); }
+  .chk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .chk { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--bg); }
+  .chk > svg { color: var(--accent); margin-top: 3px; }
+  .chk.bad { border-color: color-mix(in srgb, var(--err) 40%, var(--line)); } .chk.bad > svg { color: var(--err); }
+  .chk .nm { font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .chk .msg { color: var(--ink-2); font-size: 12.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .chk .fix { color: var(--warn); font-size: 12.5px; } .chk .fix::before { content: "→ "; }
+  .chk time { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .chk-fix { margin: 8px 0 0; color: var(--warn); font-size: 12.5px; } .chk-fix::before { content: "→ "; }
+
+  /* ---------- 能力 ---------- */
+  .cap-list { display: flex; flex-direction: column; gap: 12px; }
+  .cap-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cap-head h3 { margin: 0; font-size: 15px; }
+  .cap-head .btn { margin-left: auto; }
+  .cap-kind { font: 600 13px/1.5 var(--mono); color: var(--accent); overflow-wrap: anywhere; }
+  .cap-desc { margin: 8px 0 0; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cap-by { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  .cap-by a { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); text-decoration: none; } .cap-by a:hover { color: var(--accent); }
+  .cap-io { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+  .cap-io > div { background: var(--bg); border-radius: var(--r); padding: 10px 12px; min-width: 0; }
+  .cap-io > div > pre.json { padding: 0; }
+  .cap-io h4 { margin: 0 0 6px; font-size: 11.5px; color: var(--muted); font-weight: 600; letter-spacing: .06em; }
+  .cap-mini { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .cap-mini li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 8px 7px 12px;
+                 border: 1px solid var(--line-2); border-radius: var(--r); background: var(--bg); }
+  .cap-mini li > span { color: var(--ink-2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-card .caps { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .agent-card .caps .tag { font-family: var(--mono); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
   /* ---------- 登录 ---------- */
   .login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
@@ -430,6 +472,7 @@
       <div class="clock" id="clock" aria-hidden="true"></div>
       <div class="conn"><span id="conn-dot" class="dot"></span><span id="conn">未连接</span></div>
       <div class="me"><div class="avatar" id="avatar"></div><span id="who"></span>
+        <button class="icon-btn" id="btn-notify" title="通知设置" aria-label="通知设置"></button>
         <button class="icon-btn" id="btn-pass" title="修改密码" aria-label="修改密码"></button>
         <button class="icon-btn" id="btn-logout" title="退出登录" aria-label="退出登录"></button></div>
     </div>
@@ -466,7 +509,9 @@
     <p>任务进入选中的队列，能领这个队列的 agent 里会有一个把它领走。</p>
     <label for="task-q">队列</label><select id="task-q"></select>
     <div class="field-hint" id="task-q-hint"></div>
-    <label for="task-kind">类型 <small>· kind，领任务的 agent 据此决定怎么做</small></label><input id="task-kind" placeholder="比如：translate" maxlength="64" autocomplete="off">
+    <label for="task-kind">类型 <small>· kind，领任务的 agent 据此决定怎么做</small></label><input id="task-kind" list="task-kinds" placeholder="比如：translate" maxlength="64" autocomplete="off" spellcheck="false">
+    <datalist id="task-kinds"></datalist>
+    <div class="field-hint" id="task-kind-hint"></div>
     <label for="task-payload">内容 <small>· JSON 或纯文本，可留空</small></label>
     <textarea id="task-payload" rows="6" placeholder='{"text": "hello"}'></textarea>
     <div class="form-row">
@@ -500,6 +545,18 @@
     <label for="pass-new">新密码 <small>· 至少 8 位</small></label><input id="pass-new" type="password" autocomplete="new-password">
     <div class="err-msg" id="pass-err"></div>
     <div class="actions"><button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit" id="pass-ok">保存</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-notify">
+  <form id="notify-form">
+    <h3>通知</h3>
+    <p>agent 每日自检没通过、或者恢复正常时，往这个地址推一条消息。不填就只在控制台里提醒。</p>
+    <label for="notify-url">Webhook 地址 <small>· 飞书 / Lark、钉钉、企业微信的群机器人，Slack、Discord，或任何接收 JSON POST 的地址</small></label>
+    <input id="notify-url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…" maxlength="1000" spellcheck="false" autocomplete="off">
+    <div class="field-hint" id="notify-msg">机器人开了关键词校验的话，把「AMI」加进关键词。</div>
+    <div class="actions"><button type="button" class="btn" id="notify-test">发送测试</button><span style="flex:1"></span>
+      <button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit" id="notify-ok">保存</button></div>
   </form>
 </dialog>
 
@@ -537,17 +594,20 @@ const ICONS = {
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/>',
   lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>',
   tasks: '<path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  shield: '<path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/>',
+  caps: '<path d="M12 3 3.5 7.5 12 12l8.5-4.5z"/><path d="M3.5 12 12 16.5 20.5 12M3.5 16.5 12 21l8.5-4.5"/>',
 };
 const icon = (n, s = 16) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-let agents = [], onlineWindow = 120, skew = 0, es = null;
+let agents = [], onlineWindow = 120, skew = 0, es = null, checkTz = "";
 let route = { page: "overview", id: null };
 let feed = { key: null, events: [], hasMore: false, counts: null, loading: false };   // 当前页面的动态（概览 / 动态页 / agent 详情）
 const fresh = new Map();   // 刚到的动态 id → 到达时间，用来高亮一下
 let revealed = new Set();
-let ui = { filter: "all", q: "", guideAgent: null, ev: { agent: "", level: "", q: "" }, tk: { status: "", queue: "", agent: "", q: "" }, unseen: 0 };
+let ui = { filter: "all", q: "", cq: "", guideAgent: null, ev: { agent: "", level: "", q: "" }, tk: { status: "", queue: "", agent: "", q: "" }, unseen: 0 };
 let me = null, queues = [], users = null;
 let tasks = { key: null, items: [], hasMore: false, loading: false };   // 任务页的列表
 let taskDetail = { id: null, task: null };
@@ -584,7 +644,7 @@ const LEVEL = { warn: "告警", error: "错误" };
 const KIND = {
   sent: "已发出", reply: "回复", message: "消息", held: "扣下", run: "巡检", run_done: "处理完", task: "任务", task_done: "任务完成",
   done: "完成", goal_changed: "改目标", goal_error: "目标出错", error: "出错", warn: "告警", warning: "告警", log: "日志", info: "信息",
-  scheduler: "启动", start: "启动", started: "启动", stop: "停止", stopped: "停止", heartbeat: "心跳",
+  scheduler: "启动", start: "启动", started: "启动", stop: "停止", stopped: "停止", heartbeat: "心跳", check: "自检", capabilities: "能力",
 };
 const LEVEL_KINDS = ["warn", "warning", "error"];
 const EV_LEVELS = { "": "", attention: "warn,error", error: "error" };
@@ -603,8 +663,53 @@ function health(a) {
   if (!a.last_seen || now() - a.last_seen > onlineWindow) return { cls: "", group: "offline", label: "离线" };
   const raw = String(a.status?.state || ""), st = raw.toLowerCase(), label = STATE[st] || raw || "在线";
   if (["error", "failed", "fail", "down", "出错"].includes(st)) return { cls: "error", group: "error", label };
+  if (chkBad(a)) return { cls: "error", group: "error", label: "自检没通过" };
   if (["warn", "warning", "degraded", "blocked", "告警"].includes(st)) return { cls: "warn", group: "warn", label };
   return { cls: "on", group: "online", label };
+}
+
+/* 每日自检：中控定时派 ami.check 任务，agent 回报每一项的结果，没通过的带原因分类和处理办法 */
+const CHECK_KIND = "ami.check";
+const CHK_KIND = { auth: "登录失效", quota: "余额不足", network: "网络不通", config: "配置问题", other: "出错" };
+const CHK_HINT = { auth: "重新登录或更新凭据（cookie / token / API key），再点「立即自检」确认", quota: "去对应平台充值或提高额度",
+                   network: "检查 agent 所在机器的网络和代理", config: "检查 agent 的配置文件或环境变量" };
+const CHK_ST = { ok: ["正常", "on"], fail: ["没通过", "error"], error: ["没完成", "error"], no_response: ["没响应", "error"], unsupported: ["格式不对", "warn"] };
+const CHK_ST_HINT = { no_response: "确认 agent 在运行，并且在领任务（Python 客户端用 work() 或 serve_checks()）",
+                      error: "看看 agent 那边的日志；处理完再点「立即自检」", unsupported: "让 agent 按接入说明第 5 节回报 {\"checks\": [...]}" };
+const chkBad = a => !a.revoked && !!a.health && !a.health.ok;
+const kindName = k => k === CHECK_KIND ? "自检" : k;
+const isOnline = a => !!a.last_seen && now() - a.last_seen <= onlineWindow;
+
+/* 能力：agent 注册自己能处理哪些 kind，按（用户, kind）合在一起，说明取最近更新的那个 agent 的 */
+function capCatalog() {
+  const m = new Map();
+  for (const a of live().sort((x, y) => (y.capabilities_at || 0) - (x.capabilities_at || 0)))
+    for (const c of a.capabilities || []) {
+      const k = `${a.owner_id}|${c.kind}`;
+      if (!m.has(k)) m.set(k, { ...c, owner_id: a.owner_id, owner_name: a.owner_name, providers: [] });
+      m.get(k).providers.push(a);
+    }
+  return [...m.values()].sort((x, y) => (x.owner_id - y.owner_id) || x.kind.localeCompare(y.kind));
+}
+// 派这个能力的任务默认进哪个队列：优先在线的提供者所在的分组
+function capQueue(c) {
+  const p = c.providers.find(isOnline) || c.providers[0];
+  return `${c.owner_id}:${p.group}`;
+}
+// 能领 owner:group 这个队列、又注册了 kind 的 agent（公共池同一个用户的 agent 都能领）
+const capProviders = (q, kind) => { const i = q.indexOf(":"), o = Number(q.slice(0, i)), g = q.slice(i + 1);
+  return live().filter(a => a.owner_id === o && (!g || a.group === g) && (a.capabilities || []).some(c => c.kind === kind)); };
+// 一句话说清没通过的是哪一项、怎么处理
+function chkBrief(h) {
+  const bad = h.checks.filter(c => !c.ok);
+  if (!bad.length) return h.summary;
+  const c = bad[0], fix = c.hint || CHK_HINT[c.kind];
+  return `${c.name}${c.kind !== "other" ? `（${CHK_KIND[c.kind]}）` : ""}${fix ? ` → ${fix}` : c.message ? `：${c.message}` : ""}${bad.length > 1 ? `；另有 ${bad.length - 1} 项没通过` : ""}`;
+}
+const localTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; } };
+function whenNext(ts) {
+  const d = new Date(ts * 1000), days = Math.round((new Date(d.toDateString()) - new Date(new Date().toDateString())) / 86400000);
+  return `${days <= 0 ? "今天" : days === 1 ? "明天" : d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" })} ${clock(ts)}`;
 }
 
 /* ================= 接口 ================= */
@@ -621,6 +726,7 @@ async function loadAgents() {
   const r = await api("/api/agents");
   skew = r.server_time - t0;
   onlineWindow = r.online_window;
+  checkTz = r.check_tz || "";
   agents = r.agents;
 }
 
@@ -770,6 +876,8 @@ function agentCard(a) {
   return `<a class="agent-card ${h.cls}${a.revoked ? " revoked" : ""}" href="#/agents/${a.id}">
     <div class="top"><span class="dot ${h.cls}"></span><span class="name">${esc(a.name)}</span>${grpTag(a.group)}<span class="pill ${h.cls}">${esc(h.label)}</span></div>
     <div class="summary${sum ? "" : " none"}">${esc(sum || (a.last_seen ? "没有说明在做什么" : "等待第一次上报"))}</div>
+    ${a.capabilities?.length ? `<div class="caps">${a.capabilities.slice(0, 4).map(c => `<span class="tag" title="${esc(c.title || "")}">${esc(c.kind)}</span>`).join("")}${a.capabilities.length > 4 ? `<span class="tag">+${a.capabilities.length - 4}</span>` : ""}</div>` : ""}
+    ${chkBad(a) ? `<div class="chk-line" title="${esc(chkBrief(a.health))}">${icon("x", 13)}<span>自检：${esc(chkBrief(a.health))}</span></div>` : ""}
     <div class="foot">最近上报 · ${esc(ago(a.last_seen))}${showOwners() ? ` · ${esc(a.owner_name)}` : ""}</div></a>`;
 }
 
@@ -831,7 +939,7 @@ function pageOverview() {
     return head("概览", "所有 agent 的运行情况") +
       emptyState("agents", "还没有 agent 接入", "创建一个 API key，把接入说明发给你的 agent，它开始上报后就会出现在这里。", newKeyBtn());
   }
-  const bad = ls.filter(a => health(a).group === "error");
+  const sick = ls.filter(chkBad), bad = ls.filter(a => health(a).group === "error" && !chkBad(a));
   return head("概览", `${ls.length} 个 agent，${online} 个在线`) + `<div class="stack">
     <div class="stats">
       ${stat("全部 agent", ls.length, "all", "")}
@@ -839,6 +947,9 @@ function pageOverview() {
       ${stat("出错", count("error"), "error", '<span class="dot error"></span>')}
       ${stat("离线", count("offline"), "offline", '<span class="dot"></span>')}
     </div>
+    ${sick.length ? `<div class="alert">${icon("alert", 18)}<div><b>${sick.length} 个 agent 自检没通过</b>
+      <ul class="alert-list">${sick.map(a => `<li><a href="#/agents/${a.id}">${esc(a.name)}</a>：${esc(chkBrief(a.health))}</li>`).join("")}</ul>
+      ${me?.notify_url ? "" : `<p class="alert-foot">还没设置通知，出问题时只能在这里看到 · <a href="#" data-act="notify">设置通知</a></p>`}</div></div>` : ""}
     ${bad.length ? `<div class="alert">${icon("alert", 18)}<div><b>${bad.length} 个 agent 出错：</b>${bad.map(a => `<a href="#/agents/${a.id}">${esc(a.name)}</a>`).join("、")}</div></div>` : ""}
     <section><div class="section-title"><h2>Agents</h2>${ls.length > 6 ? `<a href="#/agents" data-filter="all">查看全部 ${ls.length} 个 →</a>` : ""}</div>
       <div class="agent-grid">${ls.slice().sort(byAttention).slice(0, 6).map(agentCard).join("")}</div></section>
@@ -888,6 +999,8 @@ function pageAgent() {
             ${Object.keys(rest).length ? fv(rest) : st.summary ? "" : `<p class="empty">上报了状态，但没有具体内容</p>`}`
           : `<p class="empty">还没上报过状态。把接入说明发给它，开始上报后这里会显示它正在做什么。</p>`}
         </section>
+        ${checkCard(a)}
+        ${capCard(a)}
         <section class="card"><div class="section-title"><h2>任务</h2><a class="card-head-link" href="#/tasks" data-tk-agent="${a.id}">查看任务 →</a></div>
           <p class="muted" style="margin:-4px 0 12px;font-size:13px">${a.group ? `领「${esc(a.group)}」分组队列和公共池的任务；它提交的任务进「${esc(a.group)}」队列。`
             : "不分组：只领公共池的任务，它提交的任务也进公共池。"}下面是它发出或领过的任务。</p>
@@ -898,6 +1011,70 @@ function pageAgent() {
       <section class="card"><div class="section-title"><h2>动态${feed.counts ? ` <small class="muted" style="font-weight:500">· 24 小时 ${feed.counts.total} 条</small>` : ""}</h2>
         <a class="card-head-link" href="#/activity" data-ev-agent="${a.id}">在动态页筛选 →</a></div>${timeline(false, "还没有动态。它发出事件后会实时出现在这里。")}</section>
     </div>`;
+}
+
+function checkCard(a) {
+  const h = a.health, on = !!a.check_at, running = !!a.check_task;
+  const sched = a.revoked ? "" : `<div class="sched">
+      <label class="check"><input type="checkbox" id="chk-on" data-id="${a.id}"${on ? " checked" : ""}>每天</label>
+      <input type="time" id="chk-at" data-id="${a.id}" value="${esc(a.check_at || "09:00")}" aria-label="自检时间"${on ? "" : " disabled"}>
+      <span class="muted">${esc(checkTz)} 时间${on && a.next_check ? ` · 下次 ${esc(whenNext(a.next_check))}${localTz() !== checkTz ? "（你这里的时间）" : ""}` : on ? "" : " · 已关闭"}</span>
+      <button class="btn sm" data-act="check-now" data-id="${a.id}"${running ? " disabled" : ""}>${icon("shield", 14)}${running ? "自检中…" : "立即自检"}</button></div>`;
+  const item = c => `<li class="chk${c.ok ? "" : " bad"}">${icon(c.ok ? "check" : "x", 14)}<div>
+      <div class="nm">${esc(c.name)}${c.ok ? "" : `<span class="tag error">${CHK_KIND[c.kind] || c.kind}</span>`}</div>
+      ${c.message ? `<div class="msg">${esc(c.message)}</div>` : ""}
+      ${c.ok ? "" : c.hint || CHK_HINT[c.kind] ? `<div class="fix">${esc(c.hint || CHK_HINT[c.kind])}</div>` : ""}</div>
+      <time>${c.ms ? (c.ms < 1000 ? `${c.ms} ms` : `${(c.ms / 1000).toFixed(1)} s`) : ""}</time></li>`;
+  let body;
+  if (!h) {
+    body = running ? `<p class="empty">正在做第一次自检，等 agent 回报…</p>`
+      : a.checks ? `<p class="empty">声明了 ${a.checks.length} 项检查：${esc(a.checks.join("、"))}，还没做过自检。</p>`
+      : `<p class="empty">它还没声明检查项。让它按接入说明第 5 节注册检查（比如登录状态、API key 余额），中控会每天定时派自检任务，没通过时在这里告警并推送通知。${on ? "" : "也可以直接打开每天自检，只确认它还能响应。"}</p>`;
+  } else {
+    const [label, cls] = CHK_ST[h.status] || [h.status, ""];
+    body = `<div class="chk-head"><span class="pill ${cls}">${label}</span><span title="${esc(new Date(h.ts * 1000).toLocaleString("zh-CN"))}">${esc(ago(h.ts))}</span>
+        <a href="#/tasks/${h.task_id}">任务 #${h.task_id}</a>${running ? `<span>· 新的一次正在进行</span>` : ""}</div>
+      ${h.checks.length ? `<ul class="chk-list">${h.checks.map(item).join("")}</ul>`
+        : h.ok ? `<p class="empty">${esc(h.summary)}</p>`
+        : `<div class="err-box">${esc(h.summary)}</div>${CHK_ST_HINT[h.status] ? `<p class="chk-fix">${esc(CHK_ST_HINT[h.status])}</p>` : ""}`}`;
+  }
+  return `<section class="card"><div class="section-title"><h2>每日自检</h2>${a.checks?.length ? `<span class="hint">${a.checks.length} 项检查</span>` : ""}</div>${sched}${body}</section>`;
+}
+
+function capIO(label, v) {
+  if (v === undefined || v === null) return "";
+  const plain = typeof v === "object" && !Array.isArray(v) && Object.values(v).every(x => x === null || typeof x !== "object");
+  return `<div><h4>${label}</h4>${plain ? fv(v) : `<pre class="json">${esc(typeof v === "string" ? v : JSON.stringify(v, null, 2))}</pre>`}</div>`;
+}
+function capItem(c) {
+  const k = `${c.owner_id}|${c.kind}`, on = c.providers.filter(isOnline).length;
+  return `<section class="card"><div class="cap-head"><span class="cap-kind">${esc(c.kind)}</span>${c.title ? `<h3>${esc(c.title)}</h3>` : ""}
+      ${showOwners() ? `<span class="owner">${esc(c.owner_name)}</span>` : ""}
+      <button class="btn sm" data-act="cap-task" data-k="${esc(k)}">${icon("send", 14)}派任务</button></div>
+    ${c.description ? `<p class="cap-desc">${esc(c.description)}</p>` : ""}
+    <div class="cap-by"><span>${c.providers.length} 个 agent 能做${c.providers.length > 1 ? `，${on} 个在线` : ""}：</span>${c.providers.map(a =>
+      `<a href="#/agents/${a.id}"><span class="dot ${health(a).cls}"></span>${esc(a.name)}${grpTag(a.group)}</a>`).join("")}</div>
+    ${c.input != null || c.output != null || c.example != null ? `<div class="cap-io">${capIO("输入 · payload", c.input)}${capIO("输出 · result", c.output)}${capIO("示例 payload", c.example)}</div>` : ""}
+  </section>`;
+}
+function pageCaps() {
+  const all = capCatalog(), q = ui.cq.trim().toLowerCase();
+  const title = "能力", desc = "agent 注册上来的能力：能处理哪种任务（kind）、payload 怎么写、谁在做";
+  if (!all.length) return head(title, desc) + emptyState("caps", "还没有 agent 注册能力",
+    "agent 启动时把自己能处理的任务类型连同说明、输入输出注册上来，这里就会列出谁能做什么，点一下就能派任务。接入说明第 6 节写了具体做法。",
+    `<a class="btn primary" href="#/guide">${icon("guide")}看接入指南</a>`);
+  const list = q ? all.filter(c => [c.kind, c.title, c.description, ...c.providers.map(a => a.name)].some(x => x && x.toLowerCase().includes(q))) : all;
+  return head(title, desc) +
+    `<div class="toolbar"><label class="search">${icon("search")}<input id="cq" placeholder="搜索能力、说明或 agent" value="${esc(ui.cq)}" autocomplete="off"></label></div>` +
+    (list.length ? `<div class="cap-list">${list.map(capItem).join("")}</div>` : `<div class="card"><p class="empty">没有符合条件的能力</p></div>`);
+}
+// agent 详情里的能力卡片
+function capCard(a) {
+  const caps = a.capabilities || [];
+  return `<section class="card"><div class="section-title"><h2>能力</h2>${caps.length ? `<a class="card-head-link" href="#/caps">能力页看详情 →</a>` : ""}</div>
+    ${caps.length ? `<ul class="cap-mini">${caps.map(c => `<li><span class="cap-kind">${esc(c.kind)}</span><span title="${esc(c.description || "")}">${esc(c.title || c.description || "")}</span>
+        ${a.revoked ? "" : `<button class="btn sm" data-act="cap-task" data-k="${esc(`${a.owner_id}|${c.kind}`)}" data-q="${esc(`${a.owner_id}:${a.group}`)}">${icon("send", 14)}派任务</button>`}</li>`).join("")}</ul>`
+      : `<p class="empty">它还没注册能力。按接入说明第 6 节把它能处理的任务类型注册上来，大家就知道能派什么任务给它、payload 怎么写。</p>`}</section>`;
 }
 
 function pageActivity() {
@@ -974,11 +1151,24 @@ function pageGuide() {
         ${Object.entries({ queued: "等 agent 来领", running: "已被一个 agent 领走，正在做", done: "执行方回报了结果", failed: "回报失败，或超时次数用完", canceled: "发起方或控制台取消了", expired: "排队超过设定时间没人领" })
           .map(([k, d]) => `${taskPill({ status: k })}<p>${d}</p>`).join("")}
       </div></section>
+    <section class="card"><div class="section-title"><h2>每日自检</h2></div>
+      <ul class="plain">
+        <li><b>做什么</b>：中控每天定时给 agent 派一条自检任务（只有它自己能领），agent 把各项功能真的试一遍——登录状态还在不在、API key 还有没有余额、网络通不通——再把每一项的结果报回来。</li>
+        <li><b>怎么开启</b>：agent 启动时声明自己有哪些检查项，中控就自动开启（默认每天 09:00，${esc(checkTz)} 时间），并马上做第一次。在 agent 详情里可以改时间、关闭，或点「立即自检」。接入说明第 5 节写了具体做法。</li>
+        <li><b>没通过时</b>：概览顶部和 agent 卡片变红，写明哪一项、什么原因（登录失效 / 余额不足 / 网络不通…）和怎么处理；同时推送到你设置的通知地址（<a href="#" data-act="notify">设置通知</a>）。30 分钟内没领走、或领走后 5 分钟内没回报，也算没通过。</li>
+        <li><b>处理完</b>：点「立即自检」，通过后告警消失，并推送一条「恢复正常」。一直正常就不打扰。</li>
+      </ul></section>
+    <section class="card"><div class="section-title"><h2>能力</h2><a class="card-head-link" href="#/caps">去能力页 →</a></div>
+      <ul class="plain">
+        <li><b>注册</b>：agent 启动时把自己能处理的任务类型（kind）报上来，附上一句说明、payload 和结果的字段、一份示例。接入说明第 6 节写了做法。</li>
+        <li><b>派任务</b>：「能力」页列出每种能力、谁能做、在不在线；点「派任务」会选好队列、填好类型和示例 payload。在派任务弹窗里手填类型时，也会提示这个队列里有没有 agent 注册过它。</li>
+        <li><b>agent 之间</b>：agent 可以查同一个账号下的其它 agent 能做什么，再把任务发过去；结果里会标出用它自己的 key 发过去能不能被领到（取决于分组）。</li>
+      </ul></section>
     <section class="card"><div class="section-title"><h2>状态颜色</h2></div>
       <div class="legend">
         <span class="pill on"><span class="dot on"></span>运行中 / 空闲</span><p>在线，正常工作</p>
         <span class="pill warn"><span class="dot warn"></span>告警</span><p>还在运行，但有需要留意的情况</p>
-        <span class="pill error"><span class="dot error"></span>出错</span><p>需要处理，会在概览顶部提醒</p>
+        <span class="pill error"><span class="dot error"></span>出错</span><p>需要处理（包括自检没通过），会在概览顶部提醒</p>
         <span class="pill"><span class="dot"></span>离线</span><p>${mins()} 分钟内没有上报</p>
       </div></section></div>`;
 }
@@ -1019,7 +1209,7 @@ function taskRow(t) {
   const [note, nc] = taskNote(t);
   return `<a class="task-row${Date.now() - (freshTask.get(t.id) || 0) < 2500 ? " fresh" : ""}" href="#/tasks/${t.id}">
     <span class="tid">#${t.id}</span>
-    <div><div class="tk">${esc(t.kind)}</div><div class="route">${esc(who(t.from_agent, t.from_name))} → ${esc(queueName(t.owner_name, t.group))}${t.worker ? ` · ${esc(who(t.worker, t.worker_name))} 执行` : ""}</div></div>
+    <div><div class="tk">${esc(kindName(t.kind))}</div><div class="route">${esc(who(t.from_agent, t.from_name))} → ${esc(queueName(t.owner_name, t.group))}${t.worker ? ` · ${esc(who(t.worker, t.worker_name))} 执行` : ""}</div></div>
     <div class="note ${nc}" title="${esc(note)}">${esc(note)}</div>
     ${taskPill(t)}
     <time title="${esc(new Date(t.created_at * 1000).toLocaleString("zh-CN"))}">${esc(evTime(t.created_at))}</time></a>`;
@@ -1077,6 +1267,7 @@ function pageTask() {
   const final = TASK_FINAL.includes(t.status), ts = x => x ? `${date(x)} ${clock(x)}` : null;
   const info = {
     "队列": queueName(t.owner_name, t.group), "发起方": who(t.from_agent, t.from_name),
+    ...(t.target ? { "只给": who(t.target) } : {}),
     "执行方": t.worker ? who(t.worker, t.worker_name) : "还没有被领走",
     "尝试": `${t.attempts} / ${t.max_attempts} 次`, "优先级": t.priority, "每次时限": dur(t.timeout),
     ...(t.status === "running" && t.lease_until ? { "需在此前回报": `${clock(t.lease_until)}（还剩 ${dur(t.lease_until - now())}）` } : {}),
@@ -1087,7 +1278,7 @@ function pageTask() {
   };
   const pct = typeof t.progress?.pct === "number" ? Math.max(0, Math.min(100, t.progress.pct)) : null;
   return back + `<div class="page-head"><div>
-      <div class="title-row"><h1>${esc(t.kind)}</h1>${taskPill(t)}</div>
+      <div class="title-row"><h1>${esc(kindName(t.kind))}</h1>${taskPill(t)}</div>
       <p>#${t.id} · ${esc(who(t.from_agent, t.from_name))} → ${esc(queueName(t.owner_name, t.group))} · ${esc(ago(t.created_at))}创建</p></div>
     <div class="head-actions">
       ${final ? "" : `<button class="btn danger" data-act="task-cancel" data-id="${t.id}">${icon("ban")}取消</button>`}
@@ -1132,7 +1323,7 @@ function pageUsers() {
 }
 
 // 第四项是手机底部标签栏里用的短名字
-const NAV = [["overview", "概览", "overview"], ["agents", "Agents", "agents"], ["activity", "动态", "activity"], ["tasks", "任务", "tasks"], ["keys", "API Keys", "key", "Keys"], ["users", "用户", "users"], ["guide", "接入指南", "guide", "指南"]];
+const NAV = [["overview", "概览", "overview"], ["agents", "Agents", "agents"], ["activity", "动态", "activity"], ["tasks", "任务", "tasks"], ["caps", "能力", "caps"], ["keys", "API Keys", "key", "Keys"], ["users", "用户", "users"], ["guide", "接入指南", "guide", "指南"]];
 
 function render() {
   const n = live().length;
@@ -1141,16 +1332,16 @@ function render() {
     ${(p === "agents" || p === "keys") && n ? `<b class="count">${n}</b>` : ""}
     ${p === "tasks" && taskStats && taskStats.queued + taskStats.running ? `<b class="count" title="排队中 + 执行中">${taskStats.queued + taskStats.running}</b>` : ""}</a>`).join("");
   const page = { overview: pageOverview, agents: route.id ? pageAgent : pageAgents, activity: pageActivity, tasks: route.id ? pageTask : pageTasks,
-                 keys: pageKeys, users: pageUsers, guide: pageGuide }[route.page] || pageOverview;
+                 caps: pageCaps, keys: pageKeys, users: pageUsers, guide: pageGuide }[route.page] || pageOverview;
   // 刷新时保留：展开着的详情、输入框焦点
   const open = [...document.querySelectorAll("#page details[open]")].map(d => d.dataset.k);
   const ae = document.activeElement, focusId = ae && ae.id && $("page").contains(ae) ? ae.id : null;
-  const sel = focusId && ae.tagName === "INPUT" ? [ae.selectionStart, ae.selectionEnd] : null;
+  const sel = focusId && ae.tagName === "INPUT" ? [ae.selectionStart, ae.selectionEnd] : null, val = sel && ae.value;
   $("page").innerHTML = page();
   const bad = live().filter(a => health(a).group === "error").length, cur = NAV.find(([p]) => p === route.page);
   document.title = `${bad ? `(${bad} 出错) ` : ""}${cur ? cur[1] + " · " : ""}AMI 中控`;
   open.forEach(k => { const d = document.querySelector(`#page details[data-k="${k}"]`); if (d) d.open = true; });
-  if (focusId && $(focusId)) { $(focusId).focus(); if (sel) try { $(focusId).setSelectionRange(...sel); } catch {} }
+  if (focusId && $(focusId)) { if (sel) $(focusId).value = val; $(focusId).focus(); if (sel) try { $(focusId).setSelectionRange(...sel); } catch {} }
   // 滚到底自动加载更早的动态
   moreObserver.disconnect();
   if ($("more")) moreObserver.observe($("more"));
@@ -1265,19 +1456,72 @@ curl -X PUT ${base}/api/v1/status \\
    失败：POST ${base}/api/v1/tasks/{id}/fail       {"token": "…", "error": "原因", "retry": false}
    做得久：POST ${base}/api/v1/tasks/{id}/progress {"token": "…", "progress": {"pct": 40, "text": "在做第 2 步"}}，会把时限往后延。
    超过时限没回报的任务会被收回重新派发，之前的 token 随之作废。回报时拿到 409，说明这次领取已失效（超时或被取消），丢掉结果即可。
+
+5. 每日自检（让中控每天确认你的各项功能还正常）
+   中控每天定时派给你一条 kind 为 "${CHECK_KIND}" 的任务（只派给你，同组的其它 agent 领不到）。
+   领到后把每项功能真的试一遍——比如用当前登录态拉一次消息列表、用 API key 发一个最小的请求，而不只是看配置在不在——
+   然后用 complete 回报每一项的结果：
+   POST ${base}/api/v1/tasks/{id}/complete
+   {"token": "…", "result": {"checks": [
+     {"name": "Lark 登录", "ok": true},
+     {"name": "OpenAI 余额", "ok": false, "kind": "quota", "message": "insufficient_quota", "hint": "去 OpenAI 后台充值"}
+   ]}}
+   kind 是没通过的原因：auth（登录 / 授权失效）、quota（余额 / 额度不足）、network（网络不通）、config（配置问题）、other。
+   hint 写给人看：怎么处理，会出现在控制台和推送的通知里。
+   启动时先声明有哪些检查项，中控会自动开启每日自检（默认每天 09:00，${checkTz} 时间），并马上派第一次：
+   PUT ${base}/api/v1/checks
+   {"checks": ["Lark 登录", "OpenAI 余额"]}
+   领任务时如果用 kinds 过滤，记得把 "${CHECK_KIND}" 加进去。30 分钟内没领走、或领走后 5 分钟内没回报，都算自检没通过。
+   用 Python 的话，中控的 ami_client.py 已经封装好：@ami.check("Lark 登录") 注册检查，work() 或 serve_checks() 会自动处理自检任务。
+
+6. 注册能力（告诉中控你能处理哪些任务）
+   启动时把你能处理的任务类型（kind，和领任务时的 kind 一致）报上来，整份替换，传空数组就是全部撤掉：
+   PUT ${base}/api/v1/capabilities
+   {"capabilities": [
+     {"kind": "translate", "title": "中译英", "description": "把中文翻译成英文，保留原有格式",
+      "input": {"text": "要翻译的文字"}, "output": {"text": "译文"}, "example": {"text": "你好"}}
+   ]}
+   只有 kind 必填；input / output 写 payload 和结果的字段说明（或 JSON Schema），example 是一份示例 payload，控制台派任务时会预填。
+   注册后会出现在控制台的「能力」页和你的详情里，大家据此给你派任务。
+   想找别的 agent 帮忙时，先查谁能做：
+   GET ${base}/api/v1/capabilities
+   每项带 providers（谁注册的、在不在线）和 reachable：为 true 时，用你的 key 提交这个 kind 的任务，注册了它的 agent 能领到。
+   用 Python 的话：@ami.capability("translate", "把中文翻译成英文", example={...}) 注册处理函数，ami.work() 会自动注册并按 kind 分派；ami.find("translate") 查能力。
 `;
 }
 
-function openNewTask(preset) {
+function openNewTask(preset, cap) {
   const qs = queues.slice();
   if (!qs.some(q => q.owner_id === me.id && q.group === "")) qs.unshift({ owner_id: me.id, owner_name: me.username, group: "", agents: 0, online: 0 });
   const pick = preset || `${me.id}:`;
   $("task-q").innerHTML = qs.map(q => { const k = `${q.owner_id}:${q.group}`;
     return `<option value="${esc(k)}" data-agents="${q.agents}" data-online="${q.online}"${k === pick ? " selected" : ""}>${esc(queueName(q.owner_name, q.group))}</option>`; }).join("");
   taskQueueHint();
+  if (cap) { $("task-kind").value = cap.kind; $("task-payload").value = ""; payloadAuto = false; }
+  taskKindHint();
   $("task-err").textContent = "";
   $("dlg-task").showModal();
-  $("task-kind").focus();
+  (cap ? $("task-payload") : $("task-kind")).focus();
+}
+// 选的队列里谁注册了这个 kind；payload 还空着（或是上次自动填的）时填上示例
+let payloadAuto = false;
+function taskKindHint() {
+  const q = $("task-q").value, kind = $("task-kind").value.trim(), cat = capCatalog(), i = q.indexOf(":"), owner = Number(q.slice(0, i));
+  $("task-kinds").innerHTML = [...new Set(cat.filter(c => c.owner_id === owner && capProviders(q, c.kind).length).map(c => c.kind))]
+    .map(k => `<option value="${esc(k)}">`).join("");
+  const c = cat.find(x => x.owner_id === owner && x.kind === kind), ps = kind ? capProviders(q, kind) : [], hint = $("task-kind-hint");
+  hint.className = "field-hint";
+  if (!kind) hint.textContent = "";
+  else if (ps.length) hint.textContent = [[c.title, c.description?.split("\n")[0]].filter(Boolean).join("："),
+    `${ps.length} 个 agent 注册了，${ps.filter(isOnline).length} 个在线`].filter(Boolean).join(" · ");
+  else {
+    hint.className = "field-hint warn";
+    hint.textContent = c ? `这个队列里没有 agent 注册「${kind}」，注册了它的 ${c.providers.map(a => a.name).join("、")} 在别的队列` : cat.length ? `没有 agent 注册过「${kind}」，领到的 agent 不一定会做` : "";
+  }
+  const pl = $("task-payload");
+  if ((payloadAuto || !pl.value.trim()) && c?.example !== undefined && ps.length) {
+    pl.value = typeof c.example === "string" ? c.example : JSON.stringify(c.example, null, 2); payloadAuto = true;
+  } else if (payloadAuto && !(c && ps.length)) { pl.value = ""; payloadAuto = false; }
 }
 function taskQueueHint() {
   const o = $("task-q").selectedOptions[0], n = Number(o?.dataset.agents || 0), on = Number(o?.dataset.online || 0);
@@ -1315,6 +1559,31 @@ async function taskAction(id, act) {
   try { const r = await api(`/api/tasks/${id}/${act}`, { method: "POST" }); taskDetail = { id, task: { ...taskDetail.task, ...r.task } }; render(); toast(act === "cancel" ? "已取消" : "已重新排队"); }
   catch (e) { toast(e.message, "error"); }
 }
+
+async function runCheck(id) {
+  try { const r = await api(`/api/agents/${id}/check`, { method: "POST" }); upsert(r.agent); render(); toast("已派出自检任务，等 agent 回报"); }
+  catch (e) { toast(e.message, "error"); }
+}
+let checkTimer;
+function saveCheckAt(id, delay) {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(async () => {
+    const on = $("chk-on")?.checked, at = $("chk-at")?.value;
+    if (on === undefined || on && !at) return;
+    try {
+      const r = await api(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify({ check_at: on ? at : "" }) });
+      upsert(r.agent); render(); toast(on ? `每天 ${at} 自检` : "已关闭每日自检");
+    } catch (e) { toast(e.message, "error"); render(); }
+  }, delay);
+}
+
+function openNotify() {
+  $("notify-url").value = me.notify_url || "";
+  notifyMsg("机器人开了关键词校验的话，把「AMI」加进关键词。");
+  $("dlg-notify").showModal();
+  $("notify-url").focus();
+}
+function notifyMsg(text, cls = "") { $("notify-msg").className = `field-hint ${cls}`; $("notify-msg").textContent = text; }
 
 let keyDialogAgent = null;
 function showKey(agent, rotated) {
@@ -1376,6 +1645,11 @@ document.addEventListener("click", ev => {
     case "ev-clear": ui.ev = { agent: "", level: "", q: "" }; refilter(); break;
     case "filter": ui.filter = t.dataset.f; render(); break;
     case "new-task": openNewTask(t.dataset.q); break;
+    case "cap-task": {
+      const c = capCatalog().find(x => `${x.owner_id}|${x.kind}` === t.dataset.k);
+      if (c) openNewTask(t.dataset.q || capQueue(c), c);
+      break;
+    }
     case "tk-queue": ui.tk.queue = ui.tk.queue === t.dataset.q ? "" : t.dataset.q; retask(); break;
     case "new-user":
       $("user-name").value = ""; $("user-pass").value = ""; $("user-admin").checked = false; $("user-err").textContent = "";
@@ -1395,6 +1669,8 @@ document.addEventListener("click", ev => {
       copyText(typeof v === "string" ? v : JSON.stringify(v ?? null, null, 2), "已复制");
       break;
     }
+    case "check-now": runCheck(id); break;
+    case "notify": ev.preventDefault(); openNotify(); break;
     case "toggle-key": revealed.has(id) ? revealed.delete(id) : revealed.add(id); render(); break;
     case "copy-key": copyText(byId(id).api_key, "key 已复制"); break;
     case "copy-guide": {
@@ -1410,6 +1686,9 @@ function retask() { render(); loadTasks().catch(() => {}); loadTaskStats().catch
 let searchTimer;
 document.addEventListener("input", ev => {
   if (ev.target.id === "q") { ui.q = ev.target.value; render(); }
+  if (ev.target.id === "cq") { ui.cq = ev.target.value; render(); }
+  if (ev.target.id === "task-kind") taskKindHint();
+  if (ev.target.id === "task-payload") payloadAuto = false;
   if (ev.target.id === "eq") { ui.ev.q = ev.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refilter, 300); }
   if (ev.target.id === "tq") { ui.tk.q = ev.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(() => { render(); loadTasks().catch(() => {}); }, 300); }
 });
@@ -1418,8 +1697,10 @@ document.addEventListener("change", ev => {
   if (ev.target.id === "ev-agent") { ui.ev.agent = ev.target.value; refilter(); }
   if (ev.target.id === "tk-agent") { ui.tk.agent = ev.target.value; retask(); }
   if (ev.target.id === "tk-queue") { ui.tk.queue = ev.target.value; retask(); }
-  if (ev.target.id === "task-q") taskQueueHint();
+  if (ev.target.id === "task-q") { taskQueueHint(); taskKindHint(); }
   if (ev.target.id === "tk-st") { ui.tk.status = ev.target.value; retask(); }
+  if (ev.target.id === "chk-on") { $("chk-at").disabled = !ev.target.checked; saveCheckAt(Number(ev.target.dataset.id), 0); }
+  if (ev.target.id === "chk-at") saveCheckAt(Number(ev.target.dataset.id), 800);   // 改时间时每改一位都会触发，等停下来再存
 });
 $("new-pill").onclick = () => { window.scrollTo(0, 0); setUnseen(0); };
 $("key-guide").onclick = () => keyDialogAgent && copyText(guideText(keyDialogAgent), "接入说明已复制，发给 agent 就行");
@@ -1452,11 +1733,29 @@ $("task-form").onsubmit = async ev => {
     const r = await api("/api/tasks", { method: "POST", body: JSON.stringify({ owner_id: Number(q.slice(0, i)), group: q.slice(i + 1), kind: $("task-kind").value.trim() || "task",
       payload, priority: num("task-pri"), max_attempts: num("task-att"), timeout: num("task-timeout") }) });
     $("dlg-task").close();
-    $("task-payload").value = "";
+    $("task-payload").value = ""; payloadAuto = false;
     toast(`已派出任务 #${r.task.id}`);
     location.hash = `#/tasks/${r.task.id}`;
   } catch (e) { $("task-err").textContent = e.message; }
   $("task-ok").disabled = false;
+};
+$("notify-test").onclick = async () => {
+  const url = $("notify-url").value.trim();
+  if (!url) return notifyMsg("先填一个地址", "warn");
+  $("notify-test").disabled = true;
+  notifyMsg("发送中…");
+  try { await api("/api/me/notify/test", { method: "POST", body: JSON.stringify({ url }) }); notifyMsg("已发送，去看看收到没有", "ok"); }
+  catch (e) { notifyMsg(e.message, "warn"); }
+  $("notify-test").disabled = false;
+};
+$("notify-form").onsubmit = async ev => {
+  ev.preventDefault();
+  $("notify-ok").disabled = true;
+  try {
+    const r = await api("/api/me/notify", { method: "PUT", body: JSON.stringify({ url: $("notify-url").value.trim(), origin: location.origin }) });
+    me.notify_url = r.notify_url; render(); $("dlg-notify").close(); toast(r.notify_url ? "已保存通知地址" : "已关闭通知");
+  } catch (e) { notifyMsg(e.message, "warn"); }
+  $("notify-ok").disabled = false;
 };
 $("user-form").onsubmit = async ev => {
   ev.preventDefault();
@@ -1579,6 +1878,8 @@ async function start() {
 
 $("btn-logout").innerHTML = icon("logout");
 $("btn-pass").innerHTML = icon("lock");
+$("btn-notify").innerHTML = icon("bell");
+$("btn-notify").onclick = openNotify;
 $("btn-pass").onclick = () => openPass(null);
 $("login-form").onsubmit = async ev => {
   ev.preventDefault();

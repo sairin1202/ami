@@ -4,6 +4,8 @@
 任务队列：key 可以带分组（ami_<分组>_xxx）。用某个 key 提交的任务进它所在分组的队列，同组的 key 来领；
 不分组的 key 提交的任务进公共池，同一个用户的所有 agent 都能领。每条任务同一时间只会被一个 agent 领走。
 
+能力：agent 注册自己能处理哪些 kind 的任务（附说明、输入输出和示例），控制台按能力派任务，其它 agent 也能查谁能做什么。
+
 多用户：管理员在控制台建账号，每个用户只看到自己的 key、动态和任务，管理员看全部。
 
 只用标准库。启动：
@@ -14,18 +16,24 @@ import argparse
 import collections
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import queue
 import re
 import secrets
+import socket
 import sqlite3
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo
 
 HERE = Path(__file__).resolve().parent
 MAX_BODY = 1 << 20        # 单次请求体上限 1MB
@@ -45,6 +53,21 @@ TASK_FINAL = ("done", "failed", "canceled", "expired")
 TASK_QUEUE_MAX = 10000    # 每个队列最多排队多少条
 TASK_KEPT_DAYS = 30       # 结束的任务保留多少天
 MAX_WAIT = 30             # 长轮询最多挂多少秒
+# 每日自检：到点给 agent 派一条只有它能领的 ami.check 任务，它把各项功能试一遍再回报
+CHECK_KIND = "ami.check"
+CHECK_DEFAULT_AT = "09:00"   # agent 第一次声明检查项时自动开启的时间
+CHECK_WAIT = 1800         # 多少秒内没领走算没响应
+CHECK_TIMEOUT = 300       # 领走后多少秒内要回报
+CHECK_KINDS = ("auth", "quota", "network", "config", "other")
+CHECK_LABEL = {"auth": "登录失效", "quota": "余额不足", "network": "网络不通", "config": "配置问题", "other": "出错"}
+CHECK_HINT = {"auth": "重新登录或更新凭据（cookie / token / API key），再在控制台点「立即自检」确认",
+              "quota": "去对应平台充值或提高额度", "network": "检查 agent 所在机器的网络和代理",
+              "config": "检查 agent 的配置文件或环境变量"}
+HHMM_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+# 能力：agent 注册自己能处理哪些 kind 的任务，附说明和输入输出，控制台和其它 agent 据此找人派任务
+CAPS_MAX = 50             # 每个 agent 最多注册几项
+CAP_FIELD_MAX = 10000     # input / output / example 每项序列化后最多多少字
+TZ = ZoneInfo(os.environ.get("AMI_TZ", "Asia/Shanghai"))   # 自检时间按这个时区算
 
 SCHEMA = """
 create table if not exists users (
@@ -53,7 +76,8 @@ create table if not exists users (
   pw_hash     text not null,
   is_admin    integer not null default 0,
   created_at  real not null,
-  disabled_at real
+  disabled_at real,
+  notify      text                              -- 通知设置 {url, origin}
 );
 create table if not exists agents (
   id          integer primary key,
@@ -66,7 +90,14 @@ create table if not exists agents (
   last_seen   real,
   status      text,
   owner_id    integer references users(id),
-  grp         text not null default ''          -- 分组，'' 表示不分组
+  grp         text not null default '',         -- 分组，'' 表示不分组
+  check_at    text,                             -- 每日自检时间 HH:MM；null 没设置过，'' 关闭
+  check_day   text,                             -- 最近一次定时自检是哪天（TZ 时区的日期）
+  checks      text,                             -- agent 声明的检查项名字（JSON 数组）
+  health      text,                             -- 最近一次自检的结果
+  check_task  integer,                          -- 正在进行的自检任务
+  caps        text,                             -- agent 注册的能力（JSON 数组）
+  caps_at     real                              -- 能力最近一次变化的时间
 );
 create table if not exists events (
   id        integer primary key,
@@ -89,6 +120,7 @@ create table if not exists tasks (
   grp           text not null default '',        -- 所在队列；'' 是公共池
   from_agent    integer references agents(id),   -- null：控制台发的
   worker        integer references agents(id),   -- 最近一次领走它的 agent
+  target        integer references agents(id),   -- 只给这个 agent 领（自检用）；null 同队列谁都能领
   claim_token   text,                            -- 每次领取发一个，回报时必须带上
   kind          text not null,
   payload       text,
@@ -176,6 +208,13 @@ class Store:
             self.db.execute("alter table agents add column owner_id integer references users(id)")
         if "grp" not in cols:
             self.db.execute("alter table agents add column grp text not null default ''")
+        for c in ("check_at text", "check_day text", "checks text", "health text", "check_task integer", "caps text", "caps_at real"):
+            if c.split()[0] not in cols:
+                self.db.execute(f"alter table agents add column {c}")
+        if "notify" not in self._cols("users"):
+            self.db.execute("alter table users add column notify text")
+        if "target" not in self._cols("tasks"):
+            self.db.execute("alter table tasks add column target integer references agents(id)")
         self.db.executescript(INDEXES)
         self.db.commit()
         self.lock = threading.Lock()
@@ -245,6 +284,15 @@ class Store:
                 self.db.execute("delete from sessions where user_id=?", (user_id,))
         return self.get_user(user_id)
 
+    def get_notify(self, user_id):
+        with self.lock:
+            r = self.db.execute("select notify from users where id=?", (user_id,)).fetchone()
+        return (loads(r["notify"]) if r else None) or {}
+
+    def set_notify(self, user_id, notify):
+        with self.lock, self.db:
+            self.db.execute("update users set notify=? where id=?", (dumps(notify or None), user_id))
+
     def check_password_of(self, user_id, password):
         with self.lock:
             r = self.db.execute("select pw_hash from users where id=?", (user_id,)).fetchone()
@@ -279,6 +327,9 @@ class Store:
             "created_at": row["created_at"], "revoked": row["revoked_at"] is not None,
             "last_seen": row["last_seen"],
             "status": json.loads(row["status"]) if row["status"] else None,
+            "check_at": row["check_at"], "checks": loads(row["checks"]), "health": loads(row["health"]),
+            "check_task": row["check_task"], "next_check": next_check(row["check_at"], row["check_day"]),
+            "capabilities": loads(row["caps"]) or [], "capabilities_at": row["caps_at"],
         }
 
     def get(self, agent_id):
@@ -341,7 +392,8 @@ class Store:
             self.db.execute("update agents set last_seen=?, status=? where id=?",
                             (time.time(), json.dumps(status, ensure_ascii=False), agent_id))
 
-    def add_events(self, agent_id, events):
+    def add_events(self, agent_id, events, touch=True):
+        """touch=False：中控自己记的事件（比如自检结果），不算 agent 上报，不刷新在线时间。"""
         out = []
         with self.lock, self.db:
             now = time.time()
@@ -351,7 +403,8 @@ class Store:
                     (agent_id, e["ts"], e["kind"], e["level"], e["text"],
                      json.dumps(e["data"], ensure_ascii=False) if e["data"] is not None else None))
                 out.append({"id": cur.lastrowid, "agent_id": agent_id, **e})
-            self.db.execute("update agents set last_seen=? where id=?", (now, agent_id))
+            if touch:
+                self.db.execute("update agents set last_seen=? where id=?", (now, agent_id))
             self.db.execute(
                 "delete from events where agent_id=? and id <= ("
                 " select id from events where agent_id=? order by id desc limit 1 offset ?)",
@@ -398,7 +451,7 @@ class Store:
     # ---- 任务队列 ----
     def _task(self, r, full=True):
         t = {k: r[k] for k in ("id", "kind", "status", "priority", "owner_id", "owner_name", "from_agent", "from_name",
-                               "worker", "worker_name", "attempts", "max_attempts", "timeout", "lease_until",
+                               "worker", "worker_name", "target", "attempts", "max_attempts", "timeout", "lease_until",
                                "expires_at", "dedupe_key", "error", "created_at", "started_at", "finished_at", "updated_at")}
         t["group"] = r["grp"]
         t["progress"] = loads(r["progress"])
@@ -427,19 +480,22 @@ class Store:
                                 (owner_id, grp)).fetchone()["n"]
             if n >= TASK_QUEUE_MAX:
                 raise ApiError(429, f"这个队列已经有 {n} 条任务在排队，先等它消化一些")
-            cur = self.db.execute(
-                "insert into tasks(owner_id, grp, from_agent, kind, payload, priority, max_attempts, timeout, expires_at,"
-                " dedupe_key, created_at, updated_at) values(?,?,?,?,?,?,?,?,?,?,?,?)",
-                (owner_id, grp, from_agent, t["kind"], dumps(t["payload"]), t["priority"], t["max_attempts"], t["timeout"],
-                 now + t["expires_in"] if t["expires_in"] else None, t["dedupe_key"], now, now))
-            return self._task(self._task_row(cur.lastrowid)), True
+            return self._task(self._task_row(self._insert_task(owner_id, grp, from_agent, t))), True
+
+    def _insert_task(self, owner_id, grp, from_agent, t, target=None):
+        now = time.time()
+        return self.db.execute(
+            "insert into tasks(owner_id, grp, from_agent, target, kind, payload, priority, max_attempts, timeout, expires_at,"
+            " dedupe_key, created_at, updated_at) values(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (owner_id, grp, from_agent, target, t["kind"], dumps(t["payload"]), t["priority"], t["max_attempts"], t["timeout"],
+             now + t["expires_in"] if t["expires_in"] else None, t["dedupe_key"], now, now)).lastrowid
 
     def claim_tasks(self, agent, limit, kinds=None):
         """agent 领自己分组的队列和公共池里的任务。查和改在同一把锁、同一个事务里，一条任务只会给一个 agent。"""
         now = time.time()
         sql = ("select id from tasks where owner_id=? and grp in (?, '') and status='queued'"
-               " and (expires_at is null or expires_at > ?)")
-        args = [agent["owner_id"], agent["grp"], now]
+               " and (expires_at is null or expires_at > ?) and (target is null or target=?)")
+        args = [agent["owner_id"], agent["grp"], now, agent["id"]]
         if kinds:
             sql += f" and kind in ({','.join('?' * len(kinds))})"
             args += kinds
@@ -617,6 +673,90 @@ class Store:
             x["queued"], x["running"] = r["queued"] or 0, r["running"] or 0
         return sorted(out.values(), key=lambda x: (x["owner_id"] or 0, x["group"] != "", x["group"]))
 
+    # ---- 每日自检 ----
+    def set_check_at(self, agent_id, check_at):
+        """改自检时间。新时间今天已经过了就从明天开始，免得一改完马上跑一次（要马上跑点「立即自检」）。"""
+        now = datetime.now(TZ)
+        passed = bool(check_at) and now.strftime("%H:%M") >= check_at
+        with self.lock, self.db:
+            self.db.execute("update agents set check_at=?, check_day=case when ? then ? else check_day end where id=?",
+                            (check_at, passed, now.date().isoformat(), agent_id))
+
+    def declare_checks(self, agent_id, names):
+        """agent 声明自己有哪些检查项。没设置过自检时间的，自动按默认时间开启；返回是否是这样第一次开启的。"""
+        now = datetime.now(TZ)
+        with self.lock, self.db:
+            r = self.db.execute("select check_at from agents where id=?", (agent_id,)).fetchone()
+            first = r["check_at"] is None
+            self.db.execute("update agents set checks=? where id=?", (dumps(names), agent_id))
+            if first:   # 声明完马上会跑一次，今天的定时就不用了
+                self.db.execute("update agents set check_at=?, check_day=? where id=?",
+                                (CHECK_DEFAULT_AT, now.date().isoformat(), agent_id))
+        return first
+
+    def due_checks(self):
+        """到点了、今天还没跑过定时自检的 agent。返回 (agent id 列表, 今天的日期)。"""
+        now = datetime.now(TZ)
+        today, hm = now.date().isoformat(), now.strftime("%H:%M")
+        with self.lock:
+            rows = self.db.execute(
+                "select a.id, a.check_at, a.check_day from agents a join users u on u.id=a.owner_id "
+                "where a.revoked_at is null and u.disabled_at is null and a.check_at is not null and a.check_at != ''").fetchall()
+        return [r["id"] for r in rows if r["check_day"] != today and hm >= r["check_at"]], today
+
+    def start_check(self, agent_id, reason, day=None):
+        """给 agent 派一条自检任务（只有它能领）。上一次还没结束就不派，返回 None。day：记下这是哪天的定时自检。"""
+        with self.lock, self.db:
+            if day:
+                self.db.execute("update agents set check_day=? where id=?", (day, agent_id))
+            a = self.db.execute("select owner_id, grp, checks, check_task, revoked_at from agents where id=?", (agent_id,)).fetchone()
+            if not a or a["revoked_at"]:
+                return None
+            if a["check_task"]:
+                t = self.db.execute("select status from tasks where id=?", (a["check_task"],)).fetchone()
+                if t and t["status"] not in TASK_FINAL:
+                    return None
+            tid = self._insert_task(a["owner_id"], a["grp"], None, {
+                "kind": CHECK_KIND, "payload": {"reason": reason, "checks": loads(a["checks"])}, "dedupe_key": None,
+                "priority": 100, "max_attempts": 1, "timeout": CHECK_TIMEOUT, "expires_in": CHECK_WAIT}, target=agent_id)
+            self.db.execute("update agents set check_task=? where id=?", (tid, agent_id))
+            return self._task(self._task_row(tid))
+
+    def finish_check(self, agent_id, task_id, health):
+        """记下自检结果，返回之前那次的结果。health 为 None（任务被取消）时只清掉进行中的标记。"""
+        with self.lock, self.db:
+            r = self.db.execute("select health from agents where id=?", (agent_id,)).fetchone()
+            if not r:
+                return None
+            if health is not None:
+                self.db.execute("update agents set health=? where id=?", (dumps(health), agent_id))
+            self.db.execute("update agents set check_task=null where id=? and check_task=?", (agent_id, task_id))
+            return loads(r["health"])
+
+
+    # ---- 能力 ----
+    def set_caps(self, agent_id, caps):
+        """agent 注册能力（整份替换）。返回 (新增的 kind, 去掉的 kind, 有没有变化)。"""
+        with self.lock, self.db:
+            old = loads(self.db.execute("select caps from agents where id=?", (agent_id,)).fetchone()["caps"]) or []
+            if old != caps:
+                self.db.execute("update agents set caps=?, caps_at=? where id=?", (dumps(caps), time.time(), agent_id))
+        was, now = {c["kind"] for c in old}, {c["kind"] for c in caps}
+        return [c["kind"] for c in caps if c["kind"] not in was], [c["kind"] for c in old if c["kind"] not in now], old != caps
+
+    def capabilities(self, owner_id):
+        """这个用户名下没吊销的 agent 注册的能力，按 kind 合在一起；说明取最近更新的那个 agent 的。"""
+        with self.lock:
+            rows = self.db.execute("select id, name, grp, last_seen, caps from agents where owner_id=? and revoked_at is null"
+                                   " and caps is not null order by caps_at desc", (owner_id,)).fetchall()
+        out, now = {}, time.time()
+        for r in rows:
+            for c in loads(r["caps"]):
+                out.setdefault(c["kind"], {**c, "providers": []})["providers"].append(
+                    {"id": r["id"], "name": r["name"], "group": r["grp"],
+                     "online": r["last_seen"] is not None and now - r["last_seen"] < ONLINE_WINDOW})
+        return sorted(out.values(), key=lambda c: c["kind"])
+
 
 class Bus:
     """把变化推给打开着的后台页面（SSE）。普通用户只收自己名下的，管理员收全部。"""
@@ -722,12 +862,196 @@ def clean_password(v):
     return v
 
 
+def clean_cap(c):
+    """agent 注册的一项能力。可以只写 kind 字符串；input / output / example 是任意 JSON，原样展示。"""
+    if isinstance(c, str):
+        c = {"kind": c}
+    if not isinstance(c, dict):
+        raise ApiError(400, "每项能力必须是对象 {kind, title, description, input, output, example}，或者直接写 kind")
+    kind = c.get("kind")
+    if not isinstance(kind, str) or not kind or len(kind) > 64:
+        raise ApiError(400, "能力的 kind 必须是 1-64 字的字符串，和要领的任务的 kind 一致")
+    if kind.startswith("ami."):
+        raise ApiError(400, f"{kind}：ami. 开头的类型是中控自己用的（比如自检），不用注册")
+    out = {"kind": kind}
+    for k, n in (("title", 80), ("description", 2000)):
+        v = c.get(k)
+        if v in (None, ""):
+            continue
+        if not isinstance(v, str) or len(v) > n:
+            raise ApiError(400, f"{kind} 的 {k} 必须是不超过 {n} 字的字符串")
+        out[k] = v.strip()
+    for k in ("input", "output", "example"):
+        if c.get(k) is not None:
+            if len(dumps(c[k])) > CAP_FIELD_MAX:
+                raise ApiError(400, f"{kind} 的 {k} 太大（上限 {CAP_FIELD_MAX} 字）")
+            out[k] = c[k]
+    return out
+
+
+# ---- 每日自检 ----
+def next_check(check_at, check_day):
+    """下一次定时自检的时间戳；今天的还没跑就是今天那个点（可能刚过，马上会跑）。"""
+    if not check_at:
+        return None
+    now = datetime.now(TZ)
+    h, m = map(int, check_at.split(":"))
+    t = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    if check_day == now.date().isoformat():
+        t += timedelta(days=1)
+    return t.timestamp()
+
+
+def clean_check(c, i):
+    """agent 回报的一项检查。ok 必须明确是 true 才算通过。"""
+    if not isinstance(c, dict):
+        c = {"ok": c is True}
+    kind = c.get("kind")
+    ms = c.get("ms")
+    return {"name": str(c.get("name") or f"第 {i + 1} 项")[:80], "ok": c.get("ok") is True,
+            "kind": kind if kind in CHECK_KINDS else "other", "message": str(c.get("message") or "")[:2000],
+            "hint": str(c.get("hint") or "")[:500],
+            "ms": ms if isinstance(ms, (int, float)) and not isinstance(ms, bool) else None}
+
+
+def check_health(task):
+    """自检任务结束后，算出这个 agent 的健康状况。"""
+    h = {"ts": task["finished_at"] or time.time(), "task_id": task["id"], "ok": False, "checks": []}
+    if task["status"] == "expired":
+        return {**h, "status": "no_response",
+                "summary": f"{CHECK_WAIT // 60} 分钟内没有领走自检任务：agent 可能离线了，或者没在领任务"}
+    if task["status"] == "failed":
+        return {**h, "status": "error", "summary": f"自检没有完成：{task['error'] or '执行失败'}"}
+    res = task.get("result")
+    items = res.get("checks") if isinstance(res, dict) else res
+    if not isinstance(items, list):
+        return {**h, "status": "unsupported",
+                "summary": "agent 回报了结果，但不是自检的格式（应为 {\"checks\": [...]}），可能它还不支持自检"}
+    checks = [clean_check(c, i) for i, c in enumerate(items[:50])]
+    bad = [c for c in checks if not c["ok"]]
+    summary = ("、".join(f"{c['name']}（{CHECK_LABEL[c['kind']]}）" if c["kind"] != "other" else c["name"] for c in bad) if bad
+               else f"{len(checks)} 项检查全部正常" if checks else "agent 响应正常（没有配置检查项）")
+    return {**h, "ok": not bad, "status": "fail" if bad else "ok", "summary": summary, "checks": checks}
+
+
+def health_lines(h):
+    """自检结果写成几行字，事件和通知共用。"""
+    lines = []
+    for c in h["checks"]:
+        if not c["ok"]:
+            lines.append(f"✗ {c['name']}（{CHECK_LABEL[c['kind']]}）{'：' + c['message'] if c['message'] else ''}")
+            hint = c["hint"] or CHECK_HINT.get(c["kind"])
+            if hint:
+                lines.append(f"  → {hint}")
+    return lines
+
+
+def safe_url(url):
+    """通知地址只能是 http(s) 的公网地址，免得被拿来探内网。"""
+    u = urlparse(url)
+    if u.scheme not in ("http", "https") or not u.hostname:
+        raise ApiError(400, "通知地址要以 http:// 或 https:// 开头")
+    try:
+        infos = socket.getaddrinfo(u.hostname, u.port or (443 if u.scheme == "https" else 80))
+    except (socket.gaierror, UnicodeError, ValueError):
+        raise ApiError(400, f"解析不了域名 {u.hostname}")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:
+            raise ApiError(400, "通知地址不能是内网或本机地址")
+
+
+def send_notify(url, text, extra=None):
+    """往 webhook 发一条文字消息，按地址认出飞书 / Lark、钉钉、企业微信的格式，其它的发通用 JSON。失败抛 ApiError。"""
+    safe_url(url)
+    host = urlparse(url).hostname
+    if host.endswith(("feishu.cn", "larksuite.com")):
+        body = {"msg_type": "text", "content": {"text": text}}
+    elif host.endswith("dingtalk.com") or host == "qyapi.weixin.qq.com":
+        body = {"msgtype": "text", "text": {"content": text}}
+    else:   # Slack 认 text，Discord 认 content
+        body = {"text": text, "content": text[:2000], **(extra or {})}
+    req = urllib.request.Request(url, data=json.dumps(body, ensure_ascii=False).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "User-Agent": "ami-hub"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as res:
+            raw = res.read(4096)
+    except urllib.error.HTTPError as e:
+        raise ApiError(400, f"通知地址返回 {e.code}：{e.read(300).decode(errors='replace')}")
+    except (urllib.error.URLError, OSError) as e:
+        raise ApiError(400, f"连不上通知地址：{getattr(e, 'reason', e)}")
+    try:   # 飞书 / 钉钉 / 企业微信出错也回 200，错误码在 body 里
+        r = json.loads(raw)
+    except ValueError:
+        return
+    code = r.get("code", r.get("errcode", r.get("StatusCode", 0))) if isinstance(r, dict) else 0
+    if code not in (0, None):
+        raise ApiError(400, f"通知被拒绝：{r.get('msg') or r.get('errmsg') or r.get('StatusMessage') or code}")
+
+
+def notify_owner(store, owner_id, text, extra):
+    """后台线程里发，不拖慢请求；没设置通知地址就什么都不做。"""
+    url = store.get_notify(owner_id).get("url")
+    if not url:
+        return
+    def run():
+        try:
+            send_notify(url, text, extra)
+        except ApiError as e:
+            sys.stderr.write(f"notify user {owner_id}: {e.msg}\n")
+    threading.Thread(target=run, daemon=True).start()
+
+
+def on_task(store, bus, signal, task):
+    """任务有变化：推给控制台、唤醒长轮询；自检任务结束了就记结果。"""
+    light = {k: v for k, v in task.items() if k not in ("payload", "result", "token")}
+    bus.publish("task", light, task["owner_id"])
+    signal.changed()
+    if task["kind"] == CHECK_KIND and task.get("target") and task["status"] in TASK_FINAL:
+        check_finished(store, bus, task)
+
+
+def start_check(store, bus, signal, agent_id, reason, day=None):
+    task = store.start_check(agent_id, reason, day)
+    if task:
+        on_task(store, bus, signal, task)
+        agent = store.get(agent_id)
+        bus.publish("agent", agent, agent["owner_id"])
+    return task
+
+
+def check_finished(store, bus, task):
+    agent_id = task["target"]
+    if task["status"] == "canceled":
+        store.finish_check(agent_id, task["id"], None)
+        agent = store.get(agent_id)
+        bus.publish("agent", agent, agent["owner_id"])
+        return
+    h = check_health(task)
+    prev = store.finish_check(agent_id, task["id"], h)
+    agent = store.get(agent_id)
+    recovered = h["ok"] and prev is not None and not prev.get("ok")
+    head = (f"自检恢复正常：{h['summary']}" if recovered else f"自检通过：{h['summary']}" if h["ok"]
+            else f"自检没通过：{h['summary']}")
+    text = "\n".join([head] + health_lines(h))
+    for e in store.add_events(agent_id, [{"ts": h["ts"], "kind": "check", "level": "info" if h["ok"] else "error",
+                                          "text": text, "data": None}], touch=False):
+        bus.publish("event", {"agent_id": agent_id, "event": e}, agent["owner_id"])
+    bus.publish("agent", agent, agent["owner_id"])
+    if not h["ok"] or recovered:   # 没通过每次都提醒；恢复时提醒一次；一直正常就不打扰
+        origin = store.get_notify(agent["owner_id"]).get("origin")
+        msg = f"[AMI] {agent['name']} · {text}" + (f"\n{origin}/#/agents/{agent_id}" if origin else "")
+        notify_owner(store, agent["owner_id"], msg, {"event": "check", "agent": {"id": agent_id, "name": agent["name"]}, "health": h})
+
+
 ROUTES = [
     ("GET", r"/", "page"),
     ("POST", r"/api/login", "login"),
     ("POST", r"/api/logout", "logout"),
     ("GET", r"/api/me", "me"),
     ("POST", r"/api/me/password", "me_password"),
+    ("PUT", r"/api/me/notify", "me_notify"),
+    ("POST", r"/api/me/notify/test", "me_notify_test"),
     ("GET", r"/api/users", "admin_users"),
     ("POST", r"/api/users", "admin_create_user"),
     ("PATCH", r"/api/users/(\d+)", "admin_update_user"),
@@ -735,7 +1059,8 @@ ROUTES = [
     ("POST", r"/api/agents", "admin_create"),
     ("POST", r"/api/agents/(\d+)/rotate", "admin_rotate"),
     ("DELETE", r"/api/agents/(\d+)", "admin_revoke"),
-    ("PATCH", r"/api/agents/(\d+)", "admin_rename"),
+    ("PATCH", r"/api/agents/(\d+)", "admin_update_agent"),
+    ("POST", r"/api/agents/(\d+)/check", "admin_check"),
     ("GET", r"/api/agents/(\d+)/events", "admin_events"),
     ("GET", r"/api/events", "admin_all_events"),
     ("GET", r"/api/stream", "admin_stream"),
@@ -752,6 +1077,9 @@ ROUTES = [
     ("POST", r"/api/v1/events", "agent_events"),
     ("POST", r"/api/v1/heartbeat", "agent_heartbeat"),
     ("GET", r"/api/v1/whoami", "agent_whoami"),
+    ("PUT", r"/api/v1/checks", "agent_checks"),
+    ("PUT", r"/api/v1/capabilities", "agent_set_caps"),
+    ("GET", r"/api/v1/capabilities", "agent_caps"),
     ("POST", r"/api/v1/tasks", "agent_push"),
     ("GET", r"/api/v1/tasks", "agent_tasks"),
     ("POST", r"/api/v1/tasks/pull", "agent_pull"),
@@ -863,7 +1191,8 @@ class Handler(BaseHTTPRequestHandler):
         return fwd.split(",")[-1].strip() if fwd else self.client_address[0]
 
     def _me(self, user):
-        return {**user, "managed": user["username"] == self.admin_user}
+        return {**user, "managed": user["username"] == self.admin_user,
+                "notify_url": self.store.get_notify(user["id"]).get("url") or ""}
 
     # ---- 登录 / 账号 ----
     def login(self):
@@ -907,6 +1236,32 @@ class Handler(BaseHTTPRequestHandler):
         cookie = (f"{SESSION_COOKIE}={token}; Path=/; HttpOnly; Secure; SameSite=Lax; "
                   f"Max-Age={SESSION_DAYS * 86400}")
         self._json({"ok": True}, cookie=cookie)
+
+    def _notify_url(self, body):
+        url = body.get("url")
+        url = url.strip() if isinstance(url, str) else ""
+        if len(url) > 1000:
+            raise ApiError(400, "通知地址太长")
+        if url:
+            safe_url(url)
+        return url
+
+    def me_notify(self):
+        user = self._login()
+        body = self._obj()
+        url = self._notify_url(body)
+        origin = body.get("origin")   # 控制台的地址，通知里附上 agent 页面的链接用
+        origin = origin.rstrip("/") if isinstance(origin, str) and re.fullmatch(r"https?://[^\s/]{1,200}/?", origin) else None
+        self.store.set_notify(user["id"], {"url": url, "origin": origin} if url else None)
+        self._json({"ok": True, "notify_url": url})
+
+    def me_notify_test(self):
+        user = self._login()
+        url = self._notify_url(self._obj()) or self.store.get_notify(user["id"]).get("url")
+        if not url:
+            raise ApiError(400, "先填一个通知地址")
+        send_notify(url, f"[AMI] 测试通知：{user['username']} 的 agent 自检出问题时，会发到这里。", {"event": "test"})
+        self._json({"ok": True})
 
     def admin_users(self):
         self._require_admin()
@@ -968,7 +1323,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def admin_list(self):
         self._login()
-        self._json({"agents": self.store.list(self._scope()), "server_time": time.time(), "online_window": ONLINE_WINDOW})
+        self._json({"agents": self.store.list(self._scope()), "server_time": time.time(), "online_window": ONLINE_WINDOW,
+                    "check_tz": str(TZ)})
 
     def _name(self, body):
         name = str(body.get("name", "")).strip()
@@ -990,11 +1346,30 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, "没有这个 agent，或已吊销")
         self._json({"agent": self._publish_agent(int(agent_id)), "api_key": key})
 
-    def admin_rename(self, agent_id):
+    def admin_update_agent(self, agent_id):
+        """改名（name）和每日自检时间（check_at：HH:MM，空或 null 关闭）。"""
         self._login()
-        self._agent_or_404(agent_id)
-        self.store.rename(int(agent_id), self._name(self._obj()))
-        self._json({"agent": self._publish_agent(int(agent_id))})
+        agent = self._agent_or_404(agent_id)
+        body = self._obj()
+        if "name" in body:
+            self.store.rename(agent["id"], self._name(body))
+        if "check_at" in body:
+            v = body["check_at"] or ""
+            if not isinstance(v, str) or v and not HHMM_RE.fullmatch(v):
+                raise ApiError(400, "自检时间的格式是 HH:MM，比如 09:00")
+            self.store.set_check_at(agent["id"], v)
+        self._json({"agent": self._publish_agent(agent["id"])})
+
+    def admin_check(self, agent_id):
+        """立即自检。"""
+        self._login()
+        agent = self._agent_or_404(agent_id)
+        if agent["revoked"]:
+            raise ApiError(400, "这个 agent 已经吊销了")
+        task = start_check(self.store, self.bus, self.signal, agent["id"], "manual")
+        if not task:
+            raise ApiError(409, "上一次自检还没结束")
+        self._json({"task": task, "agent": self.store.get(agent["id"])}, 201)
 
     def admin_revoke(self, agent_id):
         self._login()
@@ -1086,11 +1461,53 @@ class Handler(BaseHTTPRequestHandler):
         agent = self.store.get(self._agent_id()["id"])
         self._json({"id": agent["id"], "name": agent["name"], "group": agent["group"]})
 
+    def agent_checks(self):
+        """agent 声明自己有哪些检查项。第一次声明会自动开启每日自检，并马上跑一次。"""
+        agent = self._agent_id()
+        names = self._obj().get("checks")
+        if not isinstance(names, list) or len(names) > 50 or not all(isinstance(n, str) and 0 < len(n) <= 80 for n in names):
+            raise ApiError(400, "checks 必须是检查项名字的数组（最多 50 个，每个 1-80 字）")
+        first = self.store.declare_checks(agent["id"], names)
+        self.store.touch(agent["id"])
+        task = start_check(self.store, self.bus, self.signal, agent["id"], "first") if first else None
+        a = self._publish_agent(agent["id"])
+        self._json({"ok": True, "check_at": a["check_at"], "next_check": a["next_check"], "task": task and task["id"]})
+
+    def agent_set_caps(self):
+        """agent 注册自己的能力，整份替换；传空数组就是全部撤掉。有变化时记一条动态。"""
+        agent = self._agent_id()
+        items = self._obj().get("capabilities")
+        if not isinstance(items, list) or len(items) > CAPS_MAX:
+            raise ApiError(400, f"capabilities 必须是数组（最多 {CAPS_MAX} 项）")
+        caps = [clean_cap(c) for c in items]
+        kinds = [c["kind"] for c in caps]
+        dup = sorted({k for k in kinds if kinds.count(k) > 1})
+        if dup:
+            raise ApiError(400, f"kind 重复了：{'、'.join(dup)}")
+        added, removed, changed = self.store.set_caps(agent["id"], caps)
+        if changed:
+            parts = ([f"新增 {'、'.join(added)}"] if added else []) + ([f"去掉 {'、'.join(removed)}"] if removed else [])
+            text = (f"注册了 {len(caps)} 项能力：{'；'.join(parts) or '更新了说明'}" if caps else f"撤掉了全部能力（{'、'.join(removed)}）")
+            for e in self.store.add_events(agent["id"], [clean_event({"kind": "capabilities", "text": text})]):
+                self.bus.publish("event", {"agent_id": agent["id"], "event": e}, agent["owner_id"])
+        else:
+            self.store.touch(agent["id"])
+        self._publish_agent(agent["id"])
+        self._json({"ok": True, "changed": changed, "capabilities": caps})
+
+    def agent_caps(self):
+        """同一个用户名下的 agent 都注册了哪些能力。reachable：用这个 key 提交这个 kind 的任务，有没有注册了它的 agent 能领到。"""
+        agent = self._agent_id()
+        caps = self.store.capabilities(agent["owner_id"])
+        for c in caps:
+            for p in c["providers"]:
+                p["reachable"] = agent["grp"] == "" or p["group"] == agent["grp"]
+            c["reachable"] = any(p["reachable"] for p in c["providers"])
+        self._json({"capabilities": caps, "group": agent["grp"]})
+
     # ---- 任务队列 ----
     def _task_changed(self, task):
-        light = {k: v for k, v in task.items() if k not in ("payload", "result", "token")}
-        self.bus.publish("task", light, task["owner_id"])
-        self.signal.changed()
+        on_task(self.store, self.bus, self.signal, task)
 
     def _list_args(self):
         try:
@@ -1252,16 +1669,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def reaper(store, bus, signal):
-    """后台每 2 秒收回超时的任务，每小时清一次过老的已结束任务。"""
-    last_purge = 0
+    """后台每 2 秒收回超时的任务，每 30 秒派一次到点的每日自检，每小时清一次过老的已结束任务。"""
+    last_purge = last_check = 0
     while True:
         time.sleep(2)
         try:
-            changed = store.reap_tasks()
-            for t in changed:
-                bus.publish("task", t, t["owner_id"])
-            if changed:
-                signal.changed()
+            for t in store.reap_tasks():
+                on_task(store, bus, signal, t)
+            if time.time() - last_check > 30:
+                last_check = time.time()
+                ids, today = store.due_checks()
+                for agent_id in ids:
+                    start_check(store, bus, signal, agent_id, "daily", day=today)
             if time.time() - last_purge > 3600:
                 store.purge_tasks()
                 last_purge = time.time()
