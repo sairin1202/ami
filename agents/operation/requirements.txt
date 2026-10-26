@@ -1,0 +1,10 @@
+openai>=2.0
+pyautogui
+pyobjc-framework-Cocoa
+mss
+Pillow
+python-dotenv
+pyobjc-framework-ApplicationServices
+pyobjc-framework-Quartz
+pyobjc-framework-Vision
+requests
