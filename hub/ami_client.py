@@ -35,7 +35,16 @@
     def openai_quota():
         client.models.list()                                 # 抛出的异常会按内容自动归类（登录 / 余额 / 网络）
 
-    ami.serve_checks()                                       # 不用 work() 的 agent：后台线程只领自检任务
+    ami.serve_hub()                                          # 不用 work() 的 agent：后台线程只领中控的自检 / 汇报任务
+
+定时汇报：中控每 4 小时（整点对齐）派一条汇报任务，work() / serve_hub() 会自动回报一份简单的 JSON。
+不注册的话就回报最近一次 status() 的内容；想说得更具体就注册一个函数：
+
+    @ami.reporter
+    def report(task):                                        # task["payload"]["since"]：上一次汇报的时间戳（第一次是 None）
+        return {"summary": "处理了 32 条消息，扣下 2 条待确认", "state": "running",
+                "done": ["回复了 30 条消息"], "doing": ["等张三确认报价"], "issues": ["Lark 偶尔超时"],
+                "metrics": {"消息": 32, "扣下": 2}}
 
 中控连不上时默认只返回 False，不会让 agent 自己挂掉；要抛异常就传 raise_errors=True。
 """
@@ -47,6 +56,7 @@ import urllib.error
 import urllib.request
 
 CHECK_KIND = "ami.check"
+REPORT_KIND = "ami.report"
 
 
 class CheckFailed(Exception):
@@ -81,6 +91,8 @@ class Ami:
         self.raise_errors = raise_errors
         self.checks = []   # [(名字, 函数)]
         self.caps = {}     # kind -> (注册给中控的说明, 处理函数)
+        self.report_fn = None
+        self.last_status = {}   # 最近一次 status() / patch() 的内容，没注册汇报函数时拿它回报
 
     def _call(self, method, path, body=None, timeout=None):
         req = urllib.request.Request(
@@ -97,10 +109,12 @@ class Ami:
 
     def status(self, **fields):
         """整份替换当前状态。约定字段：state（running/idle/warn/error…）、summary（一句话）；其余随意。"""
+        self.last_status = dict(fields)
         return self._call("PUT", "/api/v1/status", fields)
 
     def patch(self, **fields):
         """只更新给出的字段，其余保留。"""
+        self.last_status.update(fields)
         return self._call("PATCH", "/api/v1/status", fields)
 
     def event(self, kind, text="", level="info", ts=None, **data):
@@ -194,20 +208,47 @@ class Ami:
     def _do_check(self, t):
         self.complete(t, {"checks": self.run_checks()})
 
-    def serve_checks(self):
-        """开一个后台线程，只领自检任务。agent 不用 work() 领其它任务时用这个；用 work() 的不用调。"""
+    def serve_hub(self):
+        """开一个后台线程，只领中控自己派的任务（自检、汇报）。agent 不用 work() 领其它任务时用这个；用 work() 的不用调。"""
         def loop():
-            declared = False
+            declared = not self.checks
             while True:
                 declared = declared or bool(self.declare_checks())
-                tasks = self.pull(kinds=[CHECK_KIND])
+                tasks = self.pull(kinds=[CHECK_KIND, REPORT_KIND])
                 for t in tasks:
-                    self._do_check(t)
+                    self._do_hub_task(t)
                 if not tasks:
                     time.sleep(1)
-        th = threading.Thread(target=loop, name="ami-checks", daemon=True)
+        th = threading.Thread(target=loop, name="ami-hub", daemon=True)
         th.start()
         return th
+
+    serve_checks = serve_hub   # 旧名字
+
+    def _do_hub_task(self, t):
+        """处理中控派的 ami.* 任务；不认识的回报失败，不交给业务代码。"""
+        if t["kind"] == CHECK_KIND:
+            self._do_check(t)
+        elif t["kind"] == REPORT_KIND:
+            self._do_report(t)
+        else:
+            self.fail(t, f"这个客户端还不支持 {t['kind']}，升级一下 ami_client.py")
+
+    # ---- 定时汇报 ----
+    def reporter(self, fn):
+        """注册汇报函数（当装饰器用）：fn(task) 返回一个 dict，约定字段 summary（一句话）、state、done / doing / issues（字符串数组）、
+        metrics（指标名 → 数字），其它字段原样展示。task["payload"]["since"] 是上一次汇报的时间戳。"""
+        self.report_fn = fn
+        return fn
+
+    def _do_report(self, t):
+        try:
+            r = self.report_fn(t) if self.report_fn else dict(self.last_status) or {"summary": "在运行（还没上报过状态）"}
+        except Exception as e:
+            print(f"汇报失败：{e!r}", file=sys.stderr)
+            self.fail(t, repr(e))
+        else:
+            self.complete(t, r)
 
     # ---- 能力 ----
     def capability(self, kind, description="", title="", input=None, output=None, example=None, fn=None):
@@ -234,7 +275,7 @@ class Ami:
     def work(self, handler=None, kinds=None, retry=False):
         """一直领任务、做、回报，Ctrl+C 退出。用 @ami.capability 注册过的 kind 交给对应的函数，其它的交给 handler(task)；
         返回值作为结果，抛异常就回报失败。不给 handler 时只领注册过的 kind。
-        自检任务（ami.check）不交给 handler，自动跑注册的检查并回报。"""
+        中控派的任务（自检 ami.check、汇报 ami.report）不交给 handler，自动处理并回报。"""
         if handler is None:
             kinds = list(self.caps) if kinds is None else kinds
             if not kinds or set(kinds) - set(self.caps):
@@ -243,13 +284,13 @@ class Ami:
         while True:
             declared = declared or bool(self.declare_checks())
             declared_caps = declared_caps or bool(self.declare_capabilities())
-            tasks = self.pull(kinds=kinds and [*kinds, CHECK_KIND])
+            tasks = self.pull(kinds=kinds and [*kinds, CHECK_KIND, REPORT_KIND])
             if not tasks:
                 time.sleep(1)   # 没任务时长轮询已经等过了；这里只防止中控连不上时空转
                 continue
             for t in tasks:
-                if t["kind"] == CHECK_KIND:
-                    self._do_check(t)
+                if t["kind"].startswith("ami."):
+                    self._do_hub_task(t)
                     continue
                 try:
                     result = (self.caps[t["kind"]][1] if t["kind"] in self.caps else handler)(t)

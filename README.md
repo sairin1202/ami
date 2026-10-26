@@ -3,7 +3,7 @@
 Agent 中台：给外部 agent 发 API key，agent 用 key 把状态和事件推上来，在一个后台里集中看。还带一个任务队列（用 key push 任务、同分组的 key pull 领取）和多用户账号。代码在 `hub/`，只用 Python 标准库 + SQLite，没有依赖。
 
 - `hub/server.py`：服务端（API + 后台页面）
-- `hub/dashboard.html`：控制台页面。左侧是全部 agent（按队列分组，出问题的置顶），右侧是选中 agent 的工作区（概况 / 动态 / 任务 / 能力 / 自检 / 设置）；顶栏切换中控台、任务、能力、动态。⌘K / Ctrl K 打开命令面板，可以跳到任意 agent 或按能力派任务；浅色 / 深色跟随系统，也能手动切
+- `hub/dashboard.html`：控制台页面。左侧是全部 agent（按队列分组，出问题的置顶），右侧是选中 agent 的工作区（概况 / 动态 / 任务 / 能力 / 汇报 / 自检 / 设置）；顶栏切换中控台、任务、汇报、能力、动态。⌘K / Ctrl K 打开命令面板，可以跳到任意 agent 或按能力派任务；浅色 / 深色跟随系统，也能手动切
 - `hub/ami_client.py`：Python 上报客户端
 - `status_page.html`：小暖桌面 agent 的本机状态页（独立的，不依赖中控）
 
@@ -117,7 +117,35 @@ def openai_quota():
     client.models.list()    # 普通异常按状态码和报错内容自动归类：401/403 → auth，402/quota/余额 → quota，超时/连不上 → network
 
 ami.work(handle)            # 用 work() 领任务的：自检任务自动处理，不会交给 handle
-ami.serve_checks()          # 不领其它任务的：开个后台线程只领自检任务
+ami.serve_hub()             # 不领其它任务的：开个后台线程只领中控的自检 / 汇报任务
+```
+
+## 定时汇报
+
+中控每 4 小时（按 `AMI_TZ` 时区的 0 / 4 / 8 / 12 / 16 / 20 点）给每个在线的 agent 派一条 `kind` 为 `ami.report` 的任务（`target` 是它自己），agent 用 `complete` 回报一份简单的 JSON，控制台的「汇报」页把所有 agent 的汇报汇总成一页：
+
+```json
+{"token": "…", "result": {
+  "summary": "一句话：这段时间整体怎么样", "state": "running",
+  "done": ["回复了 30 条消息"], "doing": ["等张三确认报价"], "issues": ["Lark 接口偶尔超时"],
+  "metrics": {"消息": 32, "扣下": 2}
+}}
+```
+
+- 字段都是可选的，最好至少写 `summary`；`done` / `doing` / `issues` 写成字符串也行（会变成一项的数组）；其它字段原样展示。整份不超过 20000 字。`issues` 不为空或 `state` 是 warn / error 的汇报会标出来，并在动态里记一条告警。
+- payload 带 `round`（哪一轮，手动请求为 null）、`since`（上一次汇报的时间戳）、`every_hours` 和 `format`（字段说明）。
+- **没回报**：这一轮开始时离线的不派任务，记为「离线」；15 分钟内没领走、领走后 5 分钟内没回报、回报失败或格式不对，各记一条，并附上它最近一次上报的状态。不推送通知。
+- **「汇报」页**：上面是最近 12 轮 × 每个 agent 的格子（已汇报 / 提到问题 / 没回报 / 离线），点一格看那一轮；下面默认是每个 agent 最近一次的汇报卡片，提到问题的排最前面。每个 agent 的「汇报」页签里有它的历史汇报、开关和「立即汇报」。
+- 间隔用环境变量 `AMI_REPORT_HOURS` 改（必须能整除 24，默认 4）。默认对所有 agent 开启，汇报保留 30 天。
+
+Python 客户端：`work()` / `serve_hub()` 自动处理汇报任务，默认回报最近一次 `status()` 的内容；想写得更具体就注册一个函数：
+
+```python
+@ami.reporter
+def report(task):
+    return {"summary": "处理了 32 条消息", "done": [...], "issues": [...], "metrics": {"消息": 32}}
+
+ami.serve_hub()     # 不用 work() 的：后台线程只领中控的自检 / 汇报任务（原来的 serve_checks() 还能用）
 ```
 
 ## 能力注册
@@ -152,4 +180,4 @@ ami.declare_capabilities()    # 不用 work() 的，启动时自己调一次
 
 ## 管理接口
 
-控制台用的接口，需要先 `POST /api/login {"username","password"}` 拿到 cookie：`GET /api/me`、`POST /api/logout`、`GET/POST /api/agents`、`PATCH /api/agents/{id}`（改名 `name`、每日自检时间 `check_at`：`HH:MM`，空表示关闭）、`POST /api/agents/{id}/check`（立即自检）、`PUT /api/me/notify {url}`（通知地址）、`POST /api/me/notify/test`、`POST /api/agents/{id}/rotate`、`DELETE /api/agents/{id}`（吊销）、`GET /api/agents/{id}/events?before=&limit=`、`GET /api/events`（全部 agent 的动态，可加 `agent=`）、`GET /api/stream`（SSE，只推自己能看的）、`GET /api/queues`、`GET/POST /api/tasks`（可筛 `owner=&group=&agent=&status=&q=`）、`GET /api/tasks/stats`、`GET /api/tasks/{id}`、`POST /api/tasks/{id}/cancel`、`POST /api/tasks/{id}/retry`、`POST /api/me/password`；管理员另有 `GET/POST /api/users`、`PATCH /api/users/{id}`（`password` / `is_admin` / `disabled`）。普通用户调这些接口只会拿到自己名下的数据。两个动态接口都支持 `level=warn,error`（按级别筛）、`q=`（搜内容和类型）、`counts=1`（附带最近 24 小时各级别条数）。
+控制台用的接口，需要先 `POST /api/login {"username","password"}` 拿到 cookie：`GET /api/me`、`POST /api/logout`、`GET/POST /api/agents`、`PATCH /api/agents/{id}`（改名 `name`、每日自检时间 `check_at`：`HH:MM`，空表示关闭、定时汇报开关 `report`：true / false）、`POST /api/agents/{id}/check`（立即自检）、`POST /api/agents/{id}/report`（立即汇报）、`GET /api/reports?agent=&round=&before=&limit=`（汇报记录）、`GET /api/reports/latest`（每个 agent 最近一次汇报 + 最近几轮概况）、`PUT /api/me/notify {url}`（通知地址）、`POST /api/me/notify/test`、`POST /api/agents/{id}/rotate`、`DELETE /api/agents/{id}`（吊销）、`GET /api/agents/{id}/events?before=&limit=`、`GET /api/events`（全部 agent 的动态，可加 `agent=`）、`GET /api/stream`（SSE，只推自己能看的）、`GET /api/queues`、`GET/POST /api/tasks`（可筛 `owner=&group=&agent=&status=&q=`）、`GET /api/tasks/stats`、`GET /api/tasks/{id}`、`POST /api/tasks/{id}/cancel`、`POST /api/tasks/{id}/retry`、`POST /api/me/password`；管理员另有 `GET/POST /api/users`、`PATCH /api/users/{id}`（`password` / `is_admin` / `disabled`）。普通用户调这些接口只会拿到自己名下的数据。两个动态接口都支持 `level=warn,error`（按级别筛）、`q=`（搜内容和类型）、`counts=1`（附带最近 24 小时各级别条数）。

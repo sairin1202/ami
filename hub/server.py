@@ -6,6 +6,8 @@
 
 能力：agent 注册自己能处理哪些 kind 的任务（附说明、输入输出和示例），控制台按能力派任务，其它 agent 也能查谁能做什么。
 
+定时汇报：每隔几个小时（默认 4 小时，按整点对齐）请每个在线的 agent 回报一份简单的 JSON 状态，控制台画成汇报页。
+
 多用户：管理员在控制台建账号，每个用户只看到自己的 key、动态和任务，管理员看全部。
 
 只用标准库。启动：
@@ -67,7 +69,18 @@ HHMM_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 # 能力：agent 注册自己能处理哪些 kind 的任务，附说明和输入输出，控制台和其它 agent 据此找人派任务
 CAPS_MAX = 50             # 每个 agent 最多注册几项
 CAP_FIELD_MAX = 10000     # input / output / example 每项序列化后最多多少字
-TZ = ZoneInfo(os.environ.get("AMI_TZ", "Asia/Shanghai"))   # 自检时间按这个时区算
+TZ = ZoneInfo(os.environ.get("AMI_TZ", "Asia/Shanghai"))   # 自检时间、汇报轮次按这个时区算
+# 定时汇报：每轮给每个在线的 agent 派一条只有它能领的 ami.report 任务，它回报一份简单的 JSON（summary / done / issues …）
+REPORT_KIND = "ami.report"
+REPORT_HOURS = int(os.environ.get("AMI_REPORT_HOURS") or 4)   # 每隔几小时一轮，从 0 点起对齐，必须能整除 24
+REPORT_WAIT = 900         # 多少秒内没领走算没回报
+REPORT_TIMEOUT = 300      # 领走后多少秒内要回报
+REPORT_MAX = 20000        # 汇报内容序列化后最多多少字
+REPORT_KEPT_DAYS = 30     # 汇报保留多少天
+# 约定的字段，payload 里也带上，agent 照着填；其它字段原样展示
+REPORT_FORMAT = {"summary": "一句话：这段时间整体怎么样", "state": "running / idle / warn / error",
+                 "done": ["这段时间做完的事"], "doing": ["正在做 / 接下来要做的事"],
+                 "issues": ["遇到的问题、需要人处理的事"], "metrics": {"指标名": "数字"}}
 
 SCHEMA = """
 create table if not exists users (
@@ -97,7 +110,10 @@ create table if not exists agents (
   health      text,                             -- 最近一次自检的结果
   check_task  integer,                          -- 正在进行的自检任务
   caps        text,                             -- agent 注册的能力（JSON 数组）
-  caps_at     real                              -- 能力最近一次变化的时间
+  caps_at     real,                             -- 能力最近一次变化的时间
+  report_off  integer,                          -- 1：关闭定时汇报
+  report_round text,                            -- 最近一次排到它的定时汇报是哪一轮
+  report_task integer                           -- 正在进行的汇报任务
 );
 create table if not exists events (
   id        integer primary key,
@@ -145,6 +161,22 @@ create index if not exists tasks_from on tasks(from_agent, id);
 create index if not exists tasks_worker on tasks(worker, id);
 create index if not exists tasks_status on tasks(status, lease_until);
 create unique index if not exists tasks_dedupe on tasks(owner_id, grp, dedupe_key) where dedupe_key is not null;
+create table if not exists reports (
+  id          integer primary key,
+  agent_id    integer not null references agents(id),
+  owner_id    integer not null references users(id),
+  round       text,                             -- 哪一轮定时汇报（TZ 时区的 YYYY-MM-DD HH:MM）；null 是控制台手动要的
+  task_id     integer,                          -- 对应的 ami.report 任务；离线没派任务的为 null
+  status      text not null,                    -- pending / ok / no_response / error / unsupported / offline
+  ts          real not null,                    -- 发出请求的时间，结束后改成回报（或判定没回报）的时间
+  data        text,                             -- agent 回报的内容
+  error       text,
+  last_status text,                             -- 没回报时附上它最近一次上报的状态 {status, last_seen}
+  created_at  real not null
+);
+create index if not exists reports_agent on reports(agent_id, id);
+create index if not exists reports_round on reports(round, owner_id);
+create index if not exists reports_task on reports(task_id);
 """
 INDEXES = """
 create index if not exists agents_owner on agents(owner_id, grp);
@@ -188,6 +220,7 @@ AGENT_SELECT = "select a.*, u.username owner_name from agents a left join users 
 TASK_SELECT = ("select t.*, fa.name from_name, wa.name worker_name, u.username owner_name from tasks t "
                "left join agents fa on fa.id=t.from_agent left join agents wa on wa.id=t.worker "
                "left join users u on u.id=t.owner_id")
+REPORT_SELECT = "select r.*, a.name agent_name from reports r join agents a on a.id=r.agent_id"
 loads = lambda v: json.loads(v) if v is not None else None
 dumps = lambda v: json.dumps(v, ensure_ascii=False) if v is not None else None
 
@@ -208,7 +241,8 @@ class Store:
             self.db.execute("alter table agents add column owner_id integer references users(id)")
         if "grp" not in cols:
             self.db.execute("alter table agents add column grp text not null default ''")
-        for c in ("check_at text", "check_day text", "checks text", "health text", "check_task integer", "caps text", "caps_at real"):
+        for c in ("check_at text", "check_day text", "checks text", "health text", "check_task integer", "caps text", "caps_at real",
+                  "report_off integer", "report_round text", "report_task integer"):
             if c.split()[0] not in cols:
                 self.db.execute(f"alter table agents add column {c}")
         if "notify" not in self._cols("users"):
@@ -330,6 +364,8 @@ class Store:
             "check_at": row["check_at"], "checks": loads(row["checks"]), "health": loads(row["health"]),
             "check_task": row["check_task"], "next_check": next_check(row["check_at"], row["check_day"]),
             "capabilities": loads(row["caps"]) or [], "capabilities_at": row["caps_at"],
+            "report_off": bool(row["report_off"]), "report_task": row["report_task"],
+            "next_report": None if row["report_off"] or row["revoked_at"] else next_report(row["report_round"]),
         }
 
     def get(self, agent_id):
@@ -733,6 +769,115 @@ class Store:
             self.db.execute("update agents set check_task=null where id=? and check_task=?", (agent_id, task_id))
             return loads(r["health"])
 
+    # ---- 定时汇报 ----
+    def set_report_off(self, agent_id, off):
+        with self.lock, self.db:
+            self.db.execute("update agents set report_off=? where id=?", (1 if off else None, agent_id))
+
+    def due_reports(self, round_key):
+        """这一轮还没排过汇报的 agent。顺手标成已排，所以每个 agent 每轮最多派一次。"""
+        with self.lock, self.db:
+            rows = self.db.execute(
+                "select a.id from agents a join users u on u.id=a.owner_id where a.revoked_at is null and u.disabled_at is null "
+                "and a.report_off is null and a.report_round is not ?", (round_key,)).fetchall()
+            ids = [r["id"] for r in rows]
+            self.db.executemany("update agents set report_round=? where id=?", [(round_key, i) for i in ids])
+        return ids
+
+    def start_report(self, agent_id, round_key=None, skip_offline=False):
+        """请 agent 汇报：派一条只有它能领的 ami.report 任务，并记一条 pending 的汇报。返回 (任务, 汇报)。
+        上一次还没结束、从没上报过的不派，返回 (None, None)；skip_offline 时离线的不派任务，直接记一条「离线」，返回 (None, 汇报)。"""
+        now = time.time()
+        with self.lock, self.db:
+            a = self.db.execute("select owner_id, grp, last_seen, status, revoked_at, report_task from agents where id=?",
+                                (agent_id,)).fetchone()
+            if not a or a["revoked_at"] or not a["last_seen"]:
+                return None, None
+            if a["report_task"]:
+                t = self.db.execute("select status from tasks where id=?", (a["report_task"],)).fetchone()
+                if t and t["status"] not in TASK_FINAL:
+                    return None, None
+            last = dumps({"status": loads(a["status"]), "last_seen": a["last_seen"]})
+            if skip_offline and now - a["last_seen"] > ONLINE_WINDOW:
+                rid = self.db.execute("insert into reports(agent_id, owner_id, round, status, ts, last_status, created_at) "
+                                      "values(?,?,?,'offline',?,?,?)", (agent_id, a["owner_id"], round_key, now, last, now)).lastrowid
+                return None, self._report_by_id(rid)
+            prev = self.db.execute("select max(ts) ts from reports where agent_id=? and status='ok'", (agent_id,)).fetchone()["ts"]
+            tid = self._insert_task(a["owner_id"], a["grp"], None, {
+                "kind": REPORT_KIND, "dedupe_key": None, "priority": 90, "max_attempts": 1, "timeout": REPORT_TIMEOUT,
+                "expires_in": REPORT_WAIT, "payload": {"reason": "scheduled" if round_key else "manual", "round": round_key,
+                                                       "since": prev, "every_hours": REPORT_HOURS, "format": REPORT_FORMAT}},
+                target=agent_id)
+            self.db.execute("update agents set report_task=? where id=?", (tid, agent_id))
+            rid = self.db.execute("insert into reports(agent_id, owner_id, round, task_id, status, ts, created_at) "
+                                  "values(?,?,?,?,'pending',?,?)", (agent_id, a["owner_id"], round_key, tid, now, now)).lastrowid
+            return self._task(self._task_row(tid)), self._report_by_id(rid)
+
+    def finish_report(self, task):
+        """汇报任务结束了：记下结果。任务被取消的，这条汇报直接删掉，返回 None。"""
+        now = time.time()
+        with self.lock, self.db:
+            self.db.execute("update agents set report_task=null where id=? and report_task=?", (task["target"], task["id"]))
+            r = self.db.execute("select id from reports where task_id=?", (task["id"],)).fetchone()
+            if not r:
+                return None
+            if task["status"] == "canceled":
+                self.db.execute("delete from reports where id=?", (r["id"],))
+                return None
+            status, data, error = report_result(task)
+            a = self.db.execute("select status, last_seen from agents where id=?", (task["target"],)).fetchone()
+            last = None if status == "ok" else dumps({"status": loads(a["status"]), "last_seen": a["last_seen"]})
+            self.db.execute("update reports set status=?, data=?, error=?, last_status=?, ts=? where id=?",
+                            (status, dumps(data), error, last, task["finished_at"] or now, r["id"]))
+            return self._report_by_id(r["id"])
+
+    def _report(self, r):
+        return {"id": r["id"], "agent_id": r["agent_id"], "agent_name": r["agent_name"], "owner_id": r["owner_id"],
+                "round": r["round"], "task_id": r["task_id"], "status": r["status"], "ts": r["ts"],
+                "report": loads(r["data"]), "error": r["error"], "last": loads(r["last_status"])}
+
+    def _report_by_id(self, rid):
+        return self._report(self.db.execute(REPORT_SELECT + " where r.id=?", (rid,)).fetchone())
+
+    def reports(self, owner=None, agent_id=None, round_key=None, before=None, limit=50):
+        where, args = ["1=1"], []
+        for cond, v in (("r.owner_id=?", owner), ("r.agent_id=?", agent_id), ("r.round=?", round_key), ("r.id<?", before)):
+            if v is not None:
+                where.append(cond)
+                args.append(v)
+        with self.lock:
+            rows = self.db.execute(REPORT_SELECT + f" where {' and '.join(where)} order by r.id desc limit ?", args + [limit]).fetchall()
+        return [self._report(r) for r in rows]
+
+    def latest_reports(self, owner=None):
+        """每个没吊销的 agent 最近一次已经有结果的汇报（不算还在等的）。"""
+        sql = ("select max(r.id) id from reports r join agents a on a.id=r.agent_id where a.revoked_at is null "
+               "and r.status != 'pending'" + (" and r.owner_id=?" if owner is not None else "") + " group by r.agent_id")
+        with self.lock:
+            ids = [r["id"] for r in self.db.execute(sql, [owner] if owner is not None else [])]
+            return [self._report_by_id(i) for i in ids]
+
+    def report_rounds(self, owner=None, limit=60):
+        """最近几轮定时汇报，每轮多少个 agent、几个回报了、几个提到了问题。"""
+        sql = ("select round, min(created_at) ts, count(*) total, sum(status='ok') ok, sum(status='pending') pending, "
+               "sum(status='ok' and json_array_length(coalesce(json_extract(data, '$.issues'), '[]')) > 0) issues "
+               "from reports where round is not null" + (" and owner_id=?" if owner is not None else "") +
+               " group by round order by round desc limit ?")
+        with self.lock:
+            return [dict(r) for r in self.db.execute(sql, ([owner] if owner is not None else []) + [limit])]
+
+    def round_cells(self, rounds, owner=None):
+        """这几轮里每个 agent 的汇报状态和提到的问题数，汇报页画格子用。"""
+        if not rounds:
+            return []
+        sql = ("select agent_id, round, status, json_array_length(coalesce(json_extract(data, '$.issues'), '[]')) issues "
+               f"from reports where round in ({','.join('?' * len(rounds))})" + (" and owner_id=?" if owner is not None else ""))
+        with self.lock:
+            return [dict(r) for r in self.db.execute(sql, list(rounds) + ([owner] if owner is not None else []))]
+
+    def purge_reports(self):
+        with self.lock, self.db:
+            self.db.execute("delete from reports where created_at < ?", (time.time() - REPORT_KEPT_DAYS * 86400,))
 
     # ---- 能力 ----
     def set_caps(self, agent_id, caps):
@@ -946,6 +1091,45 @@ def health_lines(h):
     return lines
 
 
+# ---- 定时汇报 ----
+def report_round(now=None):
+    """当前这一轮的开始时间：从 0 点起每 REPORT_HOURS 小时一轮。"""
+    now = now or datetime.now(TZ)
+    return now.replace(hour=now.hour - now.hour % REPORT_HOURS, minute=0, second=0, microsecond=0)
+
+
+def round_key(t):
+    return t.strftime("%Y-%m-%d %H:%M")
+
+
+def next_report(last_round):
+    """下一次定时汇报的时间戳；这一轮还没排到它就是这一轮的开始（刚过，马上会派）。"""
+    cur = report_round()
+    return (cur if last_round != round_key(cur) else cur + timedelta(hours=REPORT_HOURS)).timestamp()
+
+
+def report_result(task):
+    """汇报任务结束后，返回 (状态, 内容, 出错说明)。约定的列表字段写成字符串也行，统一成数组。"""
+    if task["status"] == "expired":
+        return "no_response", None, f"{REPORT_WAIT // 60} 分钟内没有领走汇报任务：agent 可能没在领任务，或者还不支持汇报"
+    if task["status"] == "failed":
+        return "error", None, task["error"] or "执行失败"
+    res = task.get("result")
+    if isinstance(res, dict) and isinstance(res.get("report"), dict):
+        res = res["report"]
+    if not isinstance(res, dict) or not res:
+        return "unsupported", None, "agent 回报了结果，但不是汇报的格式（应为 JSON 对象，比如 {\"summary\": \"…\"}），可能它还不支持汇报"
+    if len(dumps(res)) > REPORT_MAX:
+        return "unsupported", None, f"汇报内容太大（上限 {REPORT_MAX} 字），只写要点就好"
+    for k in ("done", "doing", "issues"):
+        v = res.get(k)
+        if v in (None, "", []):
+            res.pop(k, None)
+        elif not isinstance(v, list):
+            res[k] = [v]
+    return "ok", res, None
+
+
 def safe_url(url):
     """通知地址只能是 http(s) 的公网地址，免得被拿来探内网。"""
     u = urlparse(url)
@@ -1009,6 +1193,8 @@ def on_task(store, bus, signal, task):
     signal.changed()
     if task["kind"] == CHECK_KIND and task.get("target") and task["status"] in TASK_FINAL:
         check_finished(store, bus, task)
+    if task["kind"] == REPORT_KIND and task.get("target") and task["status"] in TASK_FINAL:
+        report_finished(store, bus, task)
 
 
 def start_check(store, bus, signal, agent_id, reason, day=None):
@@ -1044,6 +1230,33 @@ def check_finished(store, bus, task):
         notify_owner(store, agent["owner_id"], msg, {"event": "check", "agent": {"id": agent_id, "name": agent["name"]}, "health": h})
 
 
+def start_report(store, bus, signal, agent_id, round_key=None, skip_offline=False):
+    task, report = store.start_report(agent_id, round_key, skip_offline)
+    if task:
+        on_task(store, bus, signal, task)
+    if report:
+        bus.publish("report", report, report["owner_id"])
+        agent = store.get(agent_id)
+        bus.publish("agent", agent, agent["owner_id"])
+    return task, report
+
+
+def report_finished(store, bus, task):
+    report = store.finish_report(task)
+    agent = store.get(task["target"])
+    bus.publish("agent", agent, agent["owner_id"])
+    if not report:
+        return
+    bus.publish("report", report, report["owner_id"])
+    if report["status"] == "ok":
+        r = report["report"]
+        issues = r.get("issues") or []
+        text = "\n".join([f"汇报：{r.get('summary') or '（没写总结）'}"] + [f"! {x}" for x in issues[:10]])
+        for e in store.add_events(agent["id"], [{"ts": report["ts"], "kind": "report", "level": "warn" if issues else "info",
+                                                 "text": text, "data": None}], touch=False):
+            bus.publish("event", {"agent_id": agent["id"], "event": e}, agent["owner_id"])
+
+
 ROUTES = [
     ("GET", r"/", "page"),
     ("POST", r"/api/login", "login"),
@@ -1061,6 +1274,9 @@ ROUTES = [
     ("DELETE", r"/api/agents/(\d+)", "admin_revoke"),
     ("PATCH", r"/api/agents/(\d+)", "admin_update_agent"),
     ("POST", r"/api/agents/(\d+)/check", "admin_check"),
+    ("POST", r"/api/agents/(\d+)/report", "admin_report"),
+    ("GET", r"/api/reports", "admin_reports"),
+    ("GET", r"/api/reports/latest", "admin_latest_reports"),
     ("GET", r"/api/agents/(\d+)/events", "admin_events"),
     ("GET", r"/api/events", "admin_all_events"),
     ("GET", r"/api/stream", "admin_stream"),
@@ -1324,7 +1540,7 @@ class Handler(BaseHTTPRequestHandler):
     def admin_list(self):
         self._login()
         self._json({"agents": self.store.list(self._scope()), "server_time": time.time(), "online_window": ONLINE_WINDOW,
-                    "check_tz": str(TZ)})
+                    "check_tz": str(TZ), "report_hours": REPORT_HOURS})
 
     def _name(self, body):
         name = str(body.get("name", "")).strip()
@@ -1347,7 +1563,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"agent": self._publish_agent(int(agent_id)), "api_key": key})
 
     def admin_update_agent(self, agent_id):
-        """改名（name）和每日自检时间（check_at：HH:MM，空或 null 关闭）。"""
+        """改名（name）、每日自检时间（check_at：HH:MM，空或 null 关闭）、定时汇报开关（report：true / false）。"""
         self._login()
         agent = self._agent_or_404(agent_id)
         body = self._obj()
@@ -1358,6 +1574,8 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(v, str) or v and not HHMM_RE.fullmatch(v):
                 raise ApiError(400, "自检时间的格式是 HH:MM，比如 09:00")
             self.store.set_check_at(agent["id"], v)
+        if "report" in body:
+            self.store.set_report_off(agent["id"], not body["report"])
         self._json({"agent": self._publish_agent(agent["id"])})
 
     def admin_check(self, agent_id):
@@ -1370,6 +1588,43 @@ class Handler(BaseHTTPRequestHandler):
         if not task:
             raise ApiError(409, "上一次自检还没结束")
         self._json({"task": task, "agent": self.store.get(agent["id"])}, 201)
+
+    def admin_report(self, agent_id):
+        """立即请它汇报。"""
+        self._login()
+        agent = self._agent_or_404(agent_id)
+        if agent["revoked"]:
+            raise ApiError(400, "这个 agent 已经吊销了")
+        if not agent["last_seen"]:
+            raise ApiError(409, "它还没上报过，等它接入后再请它汇报")
+        task, report = start_report(self.store, self.bus, self.signal, agent["id"])
+        if not task:
+            raise ApiError(409, "上一次汇报还没结束")
+        self._json({"task": task, "report": report, "agent": self.store.get(agent["id"])}, 201)
+
+    def admin_reports(self):
+        """汇报记录：可按 agent=、round=（某一轮定时汇报）筛，before= 往前翻。"""
+        self._login()
+        try:
+            before = int(self._arg("before")) if self._arg("before") else None
+            limit = max(1, min(int(self._arg("limit") or 50), 200))
+        except ValueError:
+            raise ApiError(400, "before / limit 必须是数字")
+        agent = self._arg("agent")
+        if agent and not agent.isdigit():
+            raise ApiError(400, "agent 必须是数字")
+        self._json({"reports": self.store.reports(self._scope(), int(agent) if agent else None, self._arg("round") or None,
+                                                  before, limit)})
+
+    def admin_latest_reports(self):
+        """汇报页：每个 agent 最近一次汇报，加上最近几轮的概况。"""
+        self._login()
+        cur, owner = report_round(), self._scope()
+        rounds = self.store.report_rounds(owner)
+        self._json({"reports": self.store.latest_reports(owner), "rounds": rounds,
+                    "cells": self.store.round_cells([r["round"] for r in rounds[:12]], owner),
+                    "every_hours": REPORT_HOURS, "round": round_key(cur),
+                    "next_round": (cur + timedelta(hours=REPORT_HOURS)).timestamp()})
 
     def admin_revoke(self, agent_id):
         self._login()
@@ -1669,7 +1924,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def reaper(store, bus, signal):
-    """后台每 2 秒收回超时的任务，每 30 秒派一次到点的每日自检，每小时清一次过老的已结束任务。"""
+    """后台每 2 秒收回超时的任务，每 30 秒派一次到点的每日自检和定时汇报，每小时清一次过老的已结束任务和汇报。"""
     last_purge = last_check = 0
     while True:
         time.sleep(2)
@@ -1681,8 +1936,12 @@ def reaper(store, bus, signal):
                 ids, today = store.due_checks()
                 for agent_id in ids:
                     start_check(store, bus, signal, agent_id, "daily", day=today)
+                key = round_key(report_round())
+                for agent_id in store.due_reports(key):
+                    start_report(store, bus, signal, agent_id, key, skip_offline=True)
             if time.time() - last_purge > 3600:
                 store.purge_tasks()
+                store.purge_reports()
                 last_purge = time.time()
         except Exception as e:   # 别让后台线程因为一次数据库错误就退出
             sys.stderr.write(f"reaper: {e!r}\n")
@@ -1694,6 +1953,8 @@ def main():
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--data", default=str(HERE / "data"), help="数据库存放目录")
     args = ap.parse_args()
+    if not 1 <= REPORT_HOURS <= 24 or 24 % REPORT_HOURS:
+        sys.exit("AMI_REPORT_HOURS 必须能整除 24（1 / 2 / 3 / 4 / 6 / 8 / 12 / 24）")
 
     data_dir = Path(args.data)
     data_dir.mkdir(parents=True, exist_ok=True)

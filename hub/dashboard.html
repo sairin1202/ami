@@ -412,6 +412,43 @@
   .chk time { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
   .chk-fix { margin: 8px 0 0; color: var(--warn); font-size: 13px; } .chk-fix::before { content: "→ "; }
 
+  /* ---------- 汇报 ---------- */
+  .rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 12px; align-items: start; }
+  .rp-hist { display: flex; flex-direction: column; gap: 12px; }
+  .rp { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .rp.attn { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+  .rp.bad { border-color: color-mix(in srgb, var(--err) 30%, var(--line)); }
+  .rp-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .rp-h .nm { font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .rp-h a.nm:hover { color: var(--accent); }
+  .rp-h time { margin-left: auto; padding-left: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .rp-sum { margin: 0; font-size: 15px; font-weight: 550; overflow-wrap: anywhere; }
+  .rp-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .rp-metrics div { background: var(--sunken); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 6px 10px; min-width: 0; }
+  .rp-metrics b { display: block; font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .rp-metrics span { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+  .rp-sec h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .rp-sec ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
+  .rp-sec li { overflow-wrap: anywhere; } .rp-sec li + li { margin-top: 3px; }
+  .rp-sec.issues h4 { color: var(--warn); } .rp-sec.issues ul { color: var(--ink); }
+  .rp-last { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+  .rp-wait { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; }
+  .rm-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+  .rm { display: grid; grid-template-columns: minmax(90px, 160px) repeat(var(--cols), minmax(22px, 1fr)); gap: 4px; align-items: center; min-width: min-content; }
+  .rm .nm { font-size: 12.5px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+  .rm a.nm:hover { color: var(--accent); }
+  .rm .col { border: 0; background: none; font: inherit; font-size: 11px; color: var(--muted); padding: 2px 0; cursor: pointer; border-radius: 4px; font-variant-numeric: tabular-nums; }
+  .rm .col:hover, .rm .col.on { color: var(--accent); background: var(--accent-soft); }
+  .rm .c { height: 20px; border-radius: 4px; border: 0; padding: 0; cursor: pointer; }
+  .c { background: var(--line-2); }
+  .c.ok { background: var(--ok); opacity: .75; } .c.warn { background: var(--warn); opacity: .8; } .c.err { background: var(--err); opacity: .7; }
+  .c.off { background: repeating-linear-gradient(45deg, var(--line-2) 0 3px, var(--line) 3px 6px); }
+  .c.pend { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .c.none { background: transparent; box-shadow: inset 0 0 0 1px var(--line); } .rm .c.none { cursor: default; }
+  .rm .c.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .rm-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+  .rm-legend span { display: inline-flex; align-items: center; gap: 6px; } .rm-legend .c { width: 12px; height: 12px; display: inline-block; border-radius: 3px; }
+
   /* ---------- 能力 ---------- */
   .cap-list { display: flex; flex-direction: column; gap: 12px; }
   .cap-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -659,6 +696,7 @@ const ICONS = {
   monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2"/><circle cx="12" cy="12" r="7"/>',
 };
+ICONS.report = '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5v-1h6v1M9 10h6M9 13.5h6M9 17h3"/>';
 const icon = (n, s = 16) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
 
 const $ = id => document.getElementById(id);
@@ -668,13 +706,17 @@ let route = { page: "overview", id: null, tab: "overview" };
 let feed = { key: null, events: [], hasMore: false, counts: null, loading: false };   // 当前页面的动态（中控台 / 动态页 / agent 工作区）
 const fresh = new Map();   // 刚到的动态 id → 到达时间，用来高亮一下
 let revealed = new Set();
-let ui = { cq: "", atk: "", guideAgent: null, ev: { agent: "", level: "", q: "" }, tk: { status: "", queue: "", agent: "", q: "" }, unseen: 0,
+let ui = { cq: "", atk: "", rr: "", guideAgent: null, ev: { agent: "", level: "", q: "" }, tk: { status: "", queue: "", agent: "", q: "" }, unseen: 0,
            closed: new Set(["revoked"]), navOpen: false };
 let me = null, queues = [], users = null;
 let tasks = { key: null, items: [], hasMore: false, loading: false };   // 当前页面的任务列表
 let taskDetail = { id: null, task: null };
 let taskStats = null, scopedStats = { scope: null, s: null };   // 全局（导航计数）/ 当前页面范围内的任务统计
 const freshTask = new Map();
+let reportHours = 4;
+let reports = { latest: null, rounds: [], cells: [], every: 4, next: null };   // 汇报页：每个 agent 最新的汇报 + 最近几轮
+let roundView = { key: null, items: null };                                   // 汇报页选中的那一轮
+let agentReports = { id: null, items: null, hasMore: false, loading: false };   // agent 工作区的汇报记录
 
 const now = () => Date.now() / 1000 + skew;
 const byId = id => agents.find(a => a.id === id);
@@ -706,7 +748,7 @@ const LEVEL = { warn: "告警", error: "错误" };
 const KIND = {
   sent: "已发出", reply: "回复", message: "消息", held: "扣下", run: "巡检", run_done: "处理完", task: "任务", task_done: "任务完成",
   done: "完成", goal_changed: "改目标", goal_error: "目标出错", error: "出错", warn: "告警", warning: "告警", log: "日志", info: "信息",
-  scheduler: "启动", start: "启动", started: "启动", stop: "停止", stopped: "停止", heartbeat: "心跳", check: "自检", capabilities: "能力",
+  scheduler: "启动", start: "启动", started: "启动", stop: "停止", stopped: "停止", heartbeat: "心跳", check: "自检", capabilities: "能力", report: "汇报",
 };
 const LEVEL_KINDS = ["warn", "warning", "error"];
 const EV_LEVELS = { "": "", attention: "warn,error", error: "error" };
@@ -739,7 +781,8 @@ const CHK_ST = { ok: ["正常", "on"], fail: ["没通过", "error"], error: ["�
 const CHK_ST_HINT = { no_response: "确认 agent 在运行，并且在领任务（Python 客户端用 work() 或 serve_checks()）",
                       error: "看看 agent 那边的日志；处理完再点「立即自检」", unsupported: "让 agent 按接入说明第 5 节回报 {\"checks\": [...]}" };
 const chkBad = a => !a.revoked && !!a.health && !a.health.ok;
-const kindName = k => k === CHECK_KIND ? "自检" : k;
+const REPORT_KIND = "ami.report", REPORT_WAIT_MIN = 15;
+const kindName = k => k === CHECK_KIND ? "自检" : k === REPORT_KIND ? "汇报" : k;
 const isOnline = a => !!a.last_seen && now() - a.last_seen <= onlineWindow;
 
 /* 能力：agent 注册自己能处理哪些 kind，按（用户, kind）合在一起，说明取最近更新的那个 agent 的 */
@@ -789,6 +832,7 @@ async function loadAgents() {
   skew = r.server_time - t0;
   onlineWindow = r.online_window;
   checkTz = r.check_tz || "";
+  reportHours = r.report_hours || 4;
   agents = r.agents;
 }
 
@@ -894,6 +938,36 @@ async function loadTaskStats() {
 let statsTimer;
 function refreshTaskStats() { clearTimeout(statsTimer); statsTimer = setTimeout(() => loadTaskStats().catch(() => {}), 400); }
 const scoped = () => scopedStats.scope === statsScope() ? scopedStats.s : null;
+
+async function loadReports() {
+  if (route.page !== "reports") return;
+  const r = await api("/api/reports/latest");
+  reports = { latest: r.reports, rounds: r.rounds, cells: r.cells, every: r.every_hours, next: r.next_round };
+  if (ui.rr && !r.rounds.some(x => x.round === ui.rr)) ui.rr = "";
+  render();
+}
+async function loadRound(key) {
+  if (route.page !== "reports" || !key) return;
+  const r = await api(`/api/reports?round=${encodeURIComponent(key)}&limit=200`);
+  if (ui.rr === key) { roundView = { key, items: r.reports }; render(); }
+}
+let rpTimer;
+function refreshReports() { clearTimeout(rpTimer); rpTimer = setTimeout(() => { loadReports().catch(() => {}); loadRound(ui.rr).catch(() => {}); }, 500); }
+async function loadAgentReports(more = false) {
+  if (route.page !== "agents" || !route.id) return;
+  const id = route.id;
+  if (agentReports.id !== id) agentReports = { id, items: null, hasMore: false, loading: false };
+  if (agentReports.loading || more && !agentReports.hasMore) return;
+  agentReports.loading = true;
+  const before = more && agentReports.items?.length ? `&before=${agentReports.items[agentReports.items.length - 1].id}` : "";
+  try {
+    const r = await api(`/api/reports?agent=${id}&limit=20${before}`);
+    if (agentReports.id !== id) return;
+    agentReports.items = more ? [...(agentReports.items || []), ...r.reports] : r.reports;
+    agentReports.hasMore = r.reports.length === 20;
+  } finally { if (agentReports.id === id) agentReports.loading = false; }
+  render();
+}
 
 async function loadUsers() {
   if (route.page !== "users" || !me?.is_admin) return;
@@ -1045,7 +1119,7 @@ function renderRoster() {
 }
 
 /* ================= 顶栏 ================= */
-const NAV = [["overview", "中控台", "overview"], ["tasks", "任务", "tasks"], ["caps", "能力", "caps"], ["activity", "动态", "activity"]];
+const NAV = [["overview", "中控台", "overview"], ["tasks", "任务", "tasks"], ["reports", "汇报", "report"], ["caps", "能力", "caps"], ["activity", "动态", "activity"]];
 function renderTop() {
   const busy = taskStats ? taskStats.queued + taskStats.running : 0, caps = capCatalog().length;
   $("topnav").innerHTML = NAV.map(([p, l, ic]) => `<a href="#/${p}" class="${route.page === p ? "on" : ""}">${icon(ic, 15)}<span>${l}</span>
@@ -1119,7 +1193,7 @@ function laneCards() {
 }
 
 /* ================= 页面：agent 工作区 ================= */
-const AG_TABS = [["overview", "概况"], ["activity", "动态"], ["tasks", "任务"], ["caps", "能力"], ["check", "自检"], ["settings", "设置"]];
+const AG_TABS = [["overview", "概况"], ["activity", "动态"], ["tasks", "任务"], ["caps", "能力"], ["reports", "汇报"], ["check", "自检"], ["settings", "设置"]];
 function pageAgent() {
   const a = byId(route.id);
   if (!a) return emptyState("agents", "没有这个 agent", "它可能已经不存在了。", `<a class="btn" href="#/overview">回中控台</a>`);
@@ -1129,7 +1203,7 @@ function pageAgent() {
     caps: a.capabilities?.length ? `<span class="n">${a.capabilities.length}</span>` : "",
     check: chkBad(a) ? `<span class="n err">!</span>` : "",
   };
-  const body = { overview: agentOverview, activity: agentActivity, tasks: agentTasks, caps: agentCaps, check: checkCard, settings: agentSettings }[tab](a);
+  const body = { overview: agentOverview, activity: agentActivity, tasks: agentTasks, caps: agentCaps, reports: agentReportsTab, check: checkCard, settings: agentSettings }[tab](a);
   return `<div class="ws-head">${avatar(a, "lg")}
       <div class="ws-title"><div class="title-row"><h1>${esc(a.name)}</h1>${grpTag(a.group)}<span class="pill ${h.cls}">${h.cls ? `<span class="dot ${h.cls}"></span>` : ""}${esc(h.label)}</span></div>
         ${a.status?.summary ? `<p>${esc(a.status.summary)}</p>` : ""}
@@ -1167,6 +1241,7 @@ function agentOverview(a) {
       <section class="card"><div class="section-title"><h2>能力</h2>${caps.length ? `<a href="${agentHref(a.id, "caps")}">详情 ${icon("arrow", 13)}</a>` : ""}</div>${capMini(a)}</section>
     </div>
     <div class="stack">
+      <section class="card"><div class="section-title"><h2>最近汇报</h2><a href="${agentHref(a.id, "reports")}">${a.report_off ? "已关闭" : `每 ${reportHours} 小时`} ${icon("arrow", 13)}</a></div>${reportMini(a)}</section>
       <section class="card"><div class="section-title"><h2>每日自检</h2><a href="${agentHref(a.id, "check")}">${a.check_at ? `每天 ${esc(a.check_at)}` : "设置"} ${icon("arrow", 13)}</a></div>${chk}</section>
       <section class="card"><div class="section-title"><h2>最近动态</h2><a href="${agentHref(a.id, "activity")}">全部 ${icon("arrow", 13)}</a></div>
         ${timeline(false, "还没有动态。它发出事件后会实时出现在这里。")}</section>
@@ -1240,6 +1315,136 @@ function checkCard(a) {
   }
   return `<section class="card" style="max-width:860px"><div class="section-title"><h2>每日自检</h2>${a.checks?.length ? `<span class="hint">${a.checks.length} 项检查</span>` : ""}</div>${sched}${body}
     ${me?.notify_url ? "" : `<p class="attn-foot">没通过时会在中控台提醒；<a href="#" data-act="notify">设置通知</a>后还会推送到你的群。</p>`}</section>`;
+}
+
+/* ================= 定时汇报 ================= */
+const RP_ST = { pending: ["等待回报", "info"], ok: ["已汇报", "on"], no_response: ["没回报", "error"], error: ["汇报出错", "error"],
+                unsupported: ["格式不对", "warn"], offline: ["离线", ""] };
+const RP_ST_HINT = { no_response: "确认它在运行、在领任务，并且能处理 ami.report（Python 客户端用 work() 或 serve_hub() 会自动处理）",
+                     error: "看看 agent 那边的日志", unsupported: "让它按接入说明第 7 节回报一个 JSON 对象", offline: "这一轮开始时它不在线，没有派汇报任务" };
+const RP_KNOWN = ["summary", "state", "done", "doing", "issues", "metrics"];
+const rpBad = r => ["no_response", "error", "unsupported"].includes(r.status);
+const rpState = r => String(r.report?.state || "").toLowerCase();
+const rpAttn = r => r.status === "ok" && (!!r.report?.issues?.length || ["warn", "warning", "degraded", "blocked", "error", "failed", "fail", "down"].includes(rpState(r)));
+// 汇报轮次是中控时区的「YYYY-MM-DD HH:MM」
+function tzDay(back = 0) {
+  try { return new Intl.DateTimeFormat("en-CA", { timeZone: checkTz || undefined }).format(new Date((now() - back * 86400) * 1000)); } catch { return ""; }
+}
+function roundLabel(k) {
+  if (!k) return "手动请求";
+  const [d, t] = k.split(" ");
+  return `${d === tzDay() ? "今天" : d === tzDay(1) ? "昨天" : `${Number(d.slice(5, 7))}月${Number(d.slice(8))}日`} ${t}`;
+}
+const rpHours = () => { const n = 24 / reportHours; return n <= 8 ? `${Array.from({ length: n }, (_, i) => i * reportHours).join(" / ")} 点` : "从 0 点起每个整点"; };
+function reportCard(r, withAgent = true) {
+  const a = byId(r.agent_id), rp = r.report || {}, [label, cls] = RP_ST[r.status] || [r.status, ""], st = rpState(r);
+  const stCls = ["error", "failed", "fail", "down"].includes(st) ? "error" : ["warn", "warning", "degraded", "blocked"].includes(st) ? "warn" : "on";
+  const who = withAgent ? (a ? `${avatar(a, "sm")}<a class="nm" href="${agentHref(a.id, "reports")}">${esc(a.name)}</a>${grpTag(a.group)}` : `<span class="nm">${esc(r.agent_name)}</span>`)
+    : `<span class="nm" style="font-weight:550">${esc(roundLabel(r.round))}</span>`;
+  const pill = r.status === "ok" ? (rp.state ? `<span class="pill ${stCls}">${esc(STATE[st] || rp.state)}</span>` : "")
+    : `<span class="pill ${cls}">${r.status === "pending" ? '<span class="dot run"></span>' : ""}${label}</span>`;
+  const head = `<div class="rp-h">${who}${pill}<time title="${esc(new Date(r.ts * 1000).toLocaleString("zh-CN"))}">${esc(ago(r.ts))}</time></div>`;
+  let body;
+  if (r.status === "ok") {
+    const list = (k, title, ic, c = "") => Array.isArray(rp[k]) && rp[k].length ? `<div class="rp-sec ${c}"><h4>${icon(ic, 13)}${title}</h4>
+      <ul>${rp[k].slice(0, 30).map(x => `<li>${x !== null && typeof x === "object" ? fv(x, 1) : esc(x)}</li>`).join("")}</ul></div>` : "";
+    const metrics = rp.metrics && typeof rp.metrics === "object" && !Array.isArray(rp.metrics) ? Object.entries(rp.metrics) : [];
+    const extra = Object.fromEntries(Object.entries(rp).filter(([k]) => !RP_KNOWN.includes(k) || k === "metrics" && !metrics.length && rp.metrics != null));
+    body = `${rp.summary ? `<p class="rp-sum">${esc(rp.summary)}</p>` : ""}
+      ${metrics.length ? `<div class="rp-metrics">${metrics.slice(0, 24).map(([k, v]) => `<div><b>${typeof v === "number" ? v.toLocaleString("zh-CN")
+        : esc(v !== null && typeof v === "object" ? JSON.stringify(v) : v)}</b><span>${esc(k)}</span></div>`).join("")}</div>` : ""}
+      ${list("issues", "问题 / 需要处理", "alert", "issues")}${list("done", "做完的", "check")}${list("doing", "在做 / 接下来", "activity")}
+      ${Object.keys(extra).length ? `<details class="more-info" data-k="rp${r.id}"><summary>其它字段</summary><div class="box">${fv(extra)}</div></details>` : ""}
+      ${!rp.summary && !metrics.length && !Object.keys(extra).length && !rp.issues && !rp.done && !rp.doing ? `<p class="empty sm">汇报了，但没有内容</p>` : ""}`;
+  } else if (r.status === "pending") {
+    body = `<p class="empty sm">已经请它汇报，等它回报…</p>`;
+  } else {
+    const last = r.last, hint = RP_ST_HINT[r.status];
+    body = `${r.error ? `<div class="err-box${r.status === "unsupported" ? " warn" : ""}">${esc(r.error)}</div>` : ""}
+      ${hint ? `<p class="${r.status === "offline" ? "rp-last" : "chk-fix"}" style="margin:0">${esc(hint)}</p>` : ""}
+      ${last?.status?.summary ? `<p class="rp-last">它最近一次上报的状态（${esc(ago(last.last_seen))}）：${esc(last.status.summary)}</p>` : ""}`;
+  }
+  return `<section class="card rp${rpAttn(r) ? " attn" : rpBad(r) ? " bad" : ""}">${head}${body}</section>`;
+}
+// 先看提到问题的，再看没回报的，然后是正常的、离线的
+function byReport(x, y) {
+  const rank = r => rpAttn(r) ? 0 : rpBad(r) ? 1 : r.status === "pending" ? 2 : r.status === "ok" ? 3 : 4;
+  return rank(x) - rank(y) || String(x.agent_name).localeCompare(String(y.agent_name), "zh-CN");
+}
+// 最近几轮 × 每个 agent 的格子：一眼看出谁按时汇报了、谁提到了问题、谁没回
+function roundMatrix() {
+  const cols = reports.rounds.slice(0, 12).reverse();
+  if (!cols.length) return "";
+  const cell = new Map(reports.cells.map(c => [`${c.agent_id}|${c.round}`, c]));
+  const ids = [...new Set([...live().map(a => a.id), ...reports.cells.map(c => c.agent_id)])].filter(id => byId(id));
+  const ags = ids.map(byId).sort((x, y) => x.name.localeCompare(y.name, "zh-CN"));
+  const cls = c => !c ? "none" : c.status === "ok" ? (c.issues ? "warn" : "ok") : c.status === "pending" ? "pend" : c.status === "offline" ? "off" : "err";
+  const tip = (a, k, c) => `${a.name} · ${roundLabel(k)} · ${!c ? "没排到" : c.status === "ok" && c.issues ? `提到 ${c.issues} 个问题` : (RP_ST[c.status] || [c.status])[0]}`;
+  const colLabel = (k, i) => { const [d, t] = k.split(" "); return i === 0 || t === "00:00" ? `${Number(d.slice(8))}日` : t.slice(0, 2); };
+  return `<section class="card"><div class="section-title"><h2>最近 ${cols.length} 轮</h2><span class="hint">点格子或时间看那一轮的汇报</span></div>
+    <div class="rm-wrap"><div class="rm" style="--cols:${cols.length}"><span></span>
+      ${cols.map((c, i) => `<button class="col${ui.rr === c.round ? " on" : ""}" data-act="rr" data-r="${esc(c.round)}" title="${esc(roundLabel(c.round))} · ${c.ok}/${c.total} 汇报">${esc(colLabel(c.round, i))}</button>`).join("")}
+      ${ags.map(a => `<a class="nm" href="${agentHref(a.id, "reports")}" title="${esc(a.name)}">${esc(a.name)}</a>${cols.map(c => {
+        const x = cell.get(`${a.id}|${c.round}`);
+        return `<button class="c ${cls(x)}${ui.rr === c.round ? " sel" : ""}" ${x ? `data-act="rr" data-r="${esc(c.round)}"` : "disabled"} title="${esc(tip(a, c.round, x))}" aria-label="${esc(tip(a, c.round, x))}"></button>`;
+      }).join("")}`).join("")}
+    </div></div>
+    <div class="rm-legend">${[["ok", "已汇报"], ["warn", "提到问题"], ["err", "没回报 / 出错"], ["off", "离线"], ["pend", "等待中"], ["none", "没排到"]]
+      .map(([c, l]) => `<span><i class="c ${c}"></i>${l}</span>`).join("")}</div></section>`;
+}
+function pageReports() {
+  const tzNote = checkTz && localTz() !== checkTz ? `${esc(checkTz)} 时间 ` : "";
+  const desc = `每 ${reportHours} 小时请每个在线的 agent 汇报一次（${tzNote}${rpHours()}）${reports.next ? ` · 下一轮 ${esc(whenNext(reports.next))}${tzNote ? "（你这里的时间）" : ""}` : ""}`;
+  if (!live().length) return head("汇报", desc) + emptyState("report", "还没有 agent", "接入 agent 后，中控会定时请它们汇报，这里汇总成一页。", newKeyBtn());
+  if (reports.latest === null) return head("汇报", desc) + `<p class="empty">加载中…</p>`;
+  const sel = ui.rr, items = sel ? (roundView.key === sel ? roundView.items : null) : reports.latest;
+  const opts = `<option value="">每个 agent 最近一次</option>${reports.rounds.map(r => `<option value="${esc(r.round)}"${r.round === sel ? " selected" : ""}>${esc(roundLabel(r.round))} · ${r.ok}/${r.total} 汇报</option>`).join("")}`;
+  const toolbar = `<div class="toolbar"><select id="rr-sel" aria-label="选择轮次">${opts}</select>
+    ${sel ? `<button class="btn ghost sm" data-act="rr" data-r="">${icon("x", 14)}回到最近一次</button>` : ""}</div>`;
+  if (items === null) return head("汇报", desc) + `<div class="stack">${roundMatrix()}<div>${toolbar}<p class="empty">加载中…</p></div></div>`;
+  const rs = items.filter(r => byId(r.agent_id) && !byId(r.agent_id).revoked || sel).sort(byReport);
+  const n = f => rs.filter(f).length;
+  const stat = (label, val, cls) => `<div class="stat ${val ? cls : ""}"><span>${label}</span><b>${val}</b></div>`;
+  // 最近一次视图里还没汇报过的 agent，列在最后说明原因
+  const missing = sel ? [] : live().filter(a => !rs.some(r => r.agent_id === a.id));
+  const why = a => a.report_off ? "已关闭定时汇报" : !a.last_seen ? "还没接入" : a.report_task ? "正在等它第一次回报" : `下次 ${whenNext(a.next_report)}`;
+  return head("汇报", desc) + `<div class="stack">
+    ${roundMatrix()}
+    <div>${toolbar}
+      <div class="stats" style="margin-bottom:12px">
+        ${stat("已汇报", n(r => r.status === "ok"), "ok")}${stat("提到问题", n(rpAttn), "warn")}
+        ${stat("没回报 / 出错", n(rpBad), "error")}${stat("离线", n(r => r.status === "offline"), "")}
+        ${sel && n(r => r.status === "pending") ? stat("等待中", n(r => r.status === "pending"), "info") : ""}
+      </div>
+      ${rs.length ? `<div class="rp-grid">${rs.map(r => reportCard(r)).join("")}</div>` : `<div class="card"><p class="empty">${sel ? "这一轮没有汇报" : "还没有汇报。到下一轮时间，或在 agent 的「汇报」页签点「立即汇报」。"}</p></div>`}
+      ${missing.length ? `<p class="rp-wait">还没汇报过：${missing.map(a => `<a href="${agentHref(a.id, "reports")}">${esc(a.name)}</a>（${esc(why(a))}）`).join("、")}</p>` : ""}
+    </div></div>`;
+}
+function agentReportsTab(a) {
+  const on = !a.report_off, running = !!a.report_task;
+  const sched = a.revoked ? "" : `<div class="sched">
+      <label class="check"><input type="checkbox" id="rp-on" data-id="${a.id}"${on ? " checked" : ""}>每 ${reportHours} 小时汇报一次</label>
+      <span class="muted">${on && a.next_report ? `下次 ${esc(whenNext(a.next_report))}${checkTz && localTz() !== checkTz ? "（你这里的时间）" : ""}` : on ? "" : "已关闭"}</span>
+      <button class="btn sm" data-act="report-now" data-id="${a.id}"${running || !a.last_seen ? " disabled" : ""}>${icon("report", 14)}${running ? "等待回报…" : "立即汇报"}</button></div>`;
+  const items = agentReports.id === a.id ? agentReports.items : null;
+  const list = items === null ? `<p class="empty">加载中…</p>`
+    : items.length ? `<div class="rp-hist">${items.map(r => reportCard(r, false)).join("")}</div>` +
+      (agentReports.hasMore ? `<div class="more"><button class="btn sm" data-act="rp-more">${agentReports.loading ? "加载中…" : "加载更早的"}</button></div>` : "")
+    : `<div class="card"><p class="empty">还没有汇报。${a.last_seen ? "" : "它还没接入，"}到时间中控会请它汇报，也可以点「立即汇报」。</p></div>`;
+  return `<div class="stack" style="max-width:860px">
+    <section class="card"><div class="section-title"><h2>定时汇报</h2><a href="#/reports">所有 agent 的汇报 ${icon("arrow", 13)}</a></div>${sched}
+      <p class="muted" style="margin:0;font-size:13px">中控按 ${rpHours()}（${esc(checkTz)} 时间）给它派一条汇报任务，它回报一份简单的 JSON：一句话总结、做完的、在做的、遇到的问题和几个指标。离线时这一轮跳过。接入说明第 7 节写了格式。</p></section>
+    ${list}</div>`;
+}
+function reportMini(a) {
+  const items = agentReports.id === a.id ? agentReports.items : null;
+  if (items === null) return `<p class="empty sm">加载中…</p>`;
+  const r = items.find(x => x.status !== "pending");
+  if (!r) return `<p class="empty sm">${a.report_task ? "正在等它第一次汇报…" : a.report_off ? "已关闭定时汇报。" : "还没有汇报。"}</p>`;
+  const [label, cls] = RP_ST[r.status] || [r.status, ""], issues = r.report?.issues?.length || 0;
+  return `<div class="chk-sum"><span class="pill ${rpAttn(r) ? "warn" : cls}">${rpAttn(r) ? (issues ? `${issues} 个问题` : "需要关注") : label}</span>
+    <span class="muted" style="font-size:12.5px">${esc(ago(r.ts))}</span>
+    <p>${esc(r.status === "ok" ? r.report.summary || "（没写总结）" : r.error || RP_ST_HINT[r.status] || "")}</p></div>`;
 }
 
 /* ================= 页面：能力 ================= */
@@ -1479,6 +1684,12 @@ function pageGuide() {
         <li><b>派任务</b>：「能力」页列出每种能力、谁能做、在不在线；点「派任务」会选好队列、填好类型和示例 payload。在派任务弹窗里手填类型时，也会提示这个队列里有没有 agent 注册过它。</li>
         <li><b>agent 之间</b>：agent 可以查同一个账号下的其它 agent 能做什么，再把任务发过去；结果里会标出用它自己的 key 发过去能不能被领到（取决于分组）。</li>
       </ul></section>
+    <section class="card"><div class="section-title"><h2>定时汇报</h2><a href="#/reports">去汇报页 ${icon("arrow", 13)}</a></div>
+      <ul class="plain">
+        <li><b>做什么</b>：中控每 ${reportHours} 小时（${esc(checkTz)} 时间 ${rpHours()}）请每个在线的 agent 汇报一次：一句话总结、做完的、在做的、遇到的问题和几个指标。</li>
+        <li><b>在哪看</b>：「汇报」页把所有 agent 的最新汇报排成一页，提到问题的排最前面；上方的格子是最近几轮谁汇报了、谁没回，点一格看那一轮。每个 agent 的「汇报」页签里有它的历史汇报。</li>
+        <li><b>开关</b>：默认对所有 agent 开启，在 agent 的「汇报」页签里可以关闭，或点「立即汇报」马上要一份。接入说明第 7 节写了 agent 要怎么回报。</li>
+      </ul></section>
     <section class="card"><div class="section-title"><h2>每日自检</h2></div>
       <ul class="plain">
         <li><b>做什么</b>：中控每天定时给 agent 派一条自检任务（只有它自己能领），agent 把各项功能真的试一遍——登录状态还在不在、API key 还有没有余额、网络通不通——再把每一项的结果报回来。</li>
@@ -1496,12 +1707,12 @@ function pageGuide() {
 }
 
 /* ================= 渲染 ================= */
-const PAGE_TITLE = { overview: "中控台", tasks: "任务", caps: "能力", activity: "动态", users: "用户", guide: "接入指南" };
+const PAGE_TITLE = { overview: "中控台", tasks: "任务", reports: "汇报", caps: "能力", activity: "动态", users: "用户", guide: "接入指南" };
 function render() {
   renderTop();
   renderRoster();
   const page = { overview: pageOverview, agents: pageAgent, activity: pageActivity, tasks: route.id ? pageTask : pageTasks,
-                 caps: pageCaps, users: pageUsers, guide: pageGuide }[route.page] || pageOverview;
+                 reports: pageReports, caps: pageCaps, users: pageUsers, guide: pageGuide }[route.page] || pageOverview;
   // 刷新时保留：展开着的详情、输入框焦点
   const open = [...document.querySelectorAll("#page details[open]")].map(d => d.dataset.k);
   const ae = document.activeElement, focusId = ae && ae.id && $("page").contains(ae) ? ae.id : null;
@@ -1730,6 +1941,23 @@ curl -X PUT ${base}/api/v1/status \\
    GET ${base}/api/v1/capabilities
    每项带 providers（谁注册的、在不在线）和 reachable：为 true 时，用你的 key 提交这个 kind 的任务，注册了它的 agent 能领到。
    用 Python 的话：@ami.capability("translate", "把中文翻译成英文", example={...}) 注册处理函数，ami.work() 会自动注册并按 kind 分派；ami.find("translate") 查能力。
+
+7. 定时汇报（让用户每隔几个小时看一眼你在做什么）
+   中控每 ${reportHours} 小时（${checkTz} 时间 ${rpHours()}）派给你一条 kind 为 "${REPORT_KIND}" 的任务（只派给你；你不在线时这一轮跳过）。
+   payload 里的 since 是你上一次汇报的时间戳（第一次是 null），format 是下面这份字段说明。
+   领到后用 complete 回报一份简单的 JSON，控制台会把所有 agent 的汇报汇总成一页给用户看：
+   POST ${base}/api/v1/tasks/{id}/complete
+   {"token": "…", "result": {
+     "summary": "一句话：这段时间整体怎么样",
+     "state": "running",
+     "done": ["回复了 30 条消息", "整理了日报"],
+     "doing": ["等张三确认报价"],
+     "issues": ["Lark 接口偶尔超时"],
+     "metrics": {"消息": 32, "扣下": 2}
+   }}
+   都是可选的，但最好至少写 summary；issues 只写需要人知道或处理的事，有内容时汇报会标出来。其它字段会原样展示。
+   领任务时如果用 kinds 过滤，记得把 "${REPORT_KIND}" 加进去。${REPORT_WAIT_MIN} 分钟内没领走、或领走后 5 分钟内没回报，这一轮记为没回报。
+   用 Python 的话：work() 或 serve_hub() 会自动处理，默认回报最近一次 status() 的内容；想写得更具体就用 @ami.reporter 注册一个返回上面这种 dict 的函数。
 `;
 }
 
@@ -1803,6 +2031,19 @@ async function taskAction(id, act) {
   catch (e) { toast(e.message, "error"); }
 }
 
+async function runReport(id) {
+  try {
+    const r = await api(`/api/agents/${id}/report`, { method: "POST" });
+    upsert(r.agent);
+    if (agentReports.id === id && agentReports.items && !agentReports.items.some(x => x.id === r.report.id)) agentReports.items.unshift(r.report);
+    render(); toast("已请它汇报，等它回报");
+  } catch (e) { toast(e.message, "error"); }
+}
+async function saveReportOn(id, on) {
+  try { const r = await api(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify({ report: on }) }); upsert(r.agent); render(); toast(on ? `每 ${reportHours} 小时汇报一次` : "已关闭定时汇报"); }
+  catch (e) { toast(e.message, "error"); render(); }
+}
+
 async function runCheck(id) {
   try { const r = await api(`/api/agents/${id}/check`, { method: "POST" }); upsert(r.agent); render(); toast("已派出自检任务，等 agent 回报"); }
   catch (e) { toast(e.message, "error"); }
@@ -1861,6 +2102,7 @@ async function logout() {
   await fetch("/api/logout", { method: "POST" }).catch(() => {});
   agents = []; feed = emptyFeed(); tasks = { key: null, items: [], hasMore: false, loading: false }; taskStats = null;
   me = null; queues = []; users = null; scopedStats = { scope: null, s: null }; ui.tk = { status: "", queue: "", agent: "", q: "" };
+  reports = { latest: null, rounds: [], cells: [], every: 4, next: null }; roundView = { key: null, items: null }; agentReports = { id: null, items: null, hasMore: false, loading: false };
   showLogin();
 }
 
@@ -1914,6 +2156,9 @@ function doAct(act, d, ev) {
       break;
     }
     case "check-now": runCheck(id); break;
+    case "report-now": runReport(id); break;
+    case "rp-more": loadAgentReports(true).catch(() => {}); break;
+    case "rr": ui.rr = d.r === ui.rr ? "" : d.r; roundView = { key: null, items: null }; render(); loadRound(ui.rr).catch(() => {}); break;
     case "notify": ev?.preventDefault(); openNotify(); break;
     case "pass": openPass(null); break;
     case "go": location.hash = d.href; break;
@@ -1964,6 +2209,8 @@ document.addEventListener("change", ev => {
   if (ev.target.id === "tk-queue") { ui.tk.queue = ev.target.value; retask(); }
   if (ev.target.id === "task-q") { taskQueueHint(); taskKindHint(); }
   if (ev.target.id === "tk-st") { ui.tk.status = ev.target.value; retask(); }
+  if (ev.target.id === "rp-on") saveReportOn(Number(ev.target.dataset.id), ev.target.checked);
+  if (ev.target.id === "rr-sel") { ui.rr = ev.target.value; roundView = { key: null, items: null }; render(); loadRound(ui.rr).catch(() => {}); }
   if (ev.target.id === "chk-on") { $("chk-at").disabled = !ev.target.checked; saveCheckAt(Number(ev.target.dataset.id), 0); }
   if (ev.target.id === "chk-at") saveCheckAt(Number(ev.target.dataset.id), 800);   // 改时间时每改一位都会触发，等停下来再存
 });
@@ -2081,6 +2328,9 @@ function parseRoute() {
   if (route.page === "tasks" && route.id) loadTask(route.id);
   loadTaskStats().catch(() => {});
   loadUsers().catch(() => {});
+  loadReports().catch(() => {});
+  loadRound(ui.rr).catch(() => {});
+  if (route.page === "agents" && route.id && agentReports.id !== route.id) loadAgentReports().catch(() => {});
 }
 window.addEventListener("hashchange", parseRoute);
 
@@ -2094,6 +2344,17 @@ function connect() {
     loadTasks().catch(() => {});
     loadTaskStats().catch(() => {});
     if (route.page === "tasks" && route.id) loadTask(route.id);
+    refreshReports();
+    if (route.page === "agents" && route.id) { agentReports.id = null; loadAgentReports().catch(() => {}); }
+  });
+  es.addEventListener("report", ev => {
+    const r = JSON.parse(ev.data);
+    if (route.page === "reports") refreshReports();
+    if (agentReports.id === r.agent_id && agentReports.items) {
+      const i = agentReports.items.findIndex(x => x.id === r.id);
+      if (i >= 0) agentReports.items[i] = r; else if (!agentReports.items.length || r.id > agentReports.items[0].id) agentReports.items.unshift(r);
+      render();
+    }
   });
   es.addEventListener("task", ev => {
     const t = JSON.parse(ev.data), f = taskFilter();
