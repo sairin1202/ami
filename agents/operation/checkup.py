@@ -69,9 +69,14 @@ PROBES = [
     Probe("linux.do", "https://linux.do/my/preferences"),
     Probe("weibo.com", "https://weibo.com/"),
     Probe("okjike.com", "https://web.okjike.com/"),
+    Probe("v2ex.com", "https://www.v2ex.com/settings"),
+    Probe("sspai.com", "https://sspai.com/write", r"登录|注册|登录 ?/ ?注册"),
+    Probe("juejin.cn", "https://juejin.cn/user/settings/profile", r"登录|注册|登录 ?/ ?注册|登录注册"),
 ]
 SITES = [p.site for p in PROBES]
 SETTLE = 6.0  # 打开后等几秒，让页面跳转（被重定向到登录页）
+CHALLENGE_WAIT = 20.0  # 碰到 Cloudflare 这类「请稍候」验证页，最多再等这么久让它自己过去（不点、不做验证）
+CHALLENGE = re.compile(r"请稍候|Just a moment|Checking your browser|Ray ID|验证您是真人|Verify you are human|安全验证", re.I)
 
 
 def logged_out(url: str, has_password: bool, text: str, probe: Probe) -> str:
@@ -88,6 +93,12 @@ def logged_out(url: str, has_password: bool, text: str, probe: Probe) -> str:
     return ""
 
 
+def is_challenge(page: dict) -> bool:
+    """页面是人机验证页（Cloudflare「请稍候…」之类），还没到真正的页面。"""
+    return bool(CHALLENGE.search(page.get("title") or "")) or (
+        len(page.get("text") or "") < 400 and bool(CHALLENGE.search(page.get("text") or "")))
+
+
 def check_site(probe: Probe, on_step=None) -> dict:
     """在浏览器里打开 probe.url 看有没有掉线。on_step：每次切到浏览器后调一下（记下用过的应用，最后最小化）。"""
     import browser
@@ -97,7 +108,14 @@ def check_site(probe: Probe, on_step=None) -> dict:
         time.sleep(SETTLE)
         try:
             page = browser.read_page(max_chars=3000)
-            reason = logged_out(page.get("url") or "", browser.has_password_field(), page.get("text") or "", probe)
+            waited = 0.0
+            while is_challenge(page) and waited < CHALLENGE_WAIT:  # 验证页一般几秒就自己过去了
+                time.sleep(4)
+                waited += 4
+                page = browser.read_page(max_chars=3000)
+            challenged = is_challenge(page)
+            reason = "" if challenged else logged_out(page.get("url") or "", browser.has_password_field(),
+                                                      page.get("text") or "", probe)
         finally:
             if on_step:
                 on_step()
@@ -105,6 +123,9 @@ def check_site(probe: Probe, on_step=None) -> dict:
                 browser.close_tab()
     except Exception as e:  # noqa: BLE001  浏览器没开、没权限、页面打不开
         return {**out, "state": "error", "detail": f"{type(e).__name__}: {e}"[:300]}
+    if challenged:  # 看不到真正的页面：既不能说登录着，也不能说掉线了
+        return {**out, "state": "error", "detail": "被网站的人机验证页（如 Cloudflare「请稍候」）挡住了，没查到",
+                "hint": f"在浏览器里打开 {probe.url} 过一下验证，再自检一次"}
     if reason:
         return {**out, "state": "login", "detail": reason,
                 "hint": f"请用户在浏览器里重新登录 {probe.site}（打开 {probe.url} 看看）"}
