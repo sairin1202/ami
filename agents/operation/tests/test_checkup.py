@@ -73,6 +73,24 @@ class CheckSiteTest(unittest.TestCase):
             b.read_page.side_effect = RuntimeError("没有正在运行的浏览器")
             self.assertEqual(checkup.check_site(checkup.Probe("zhihu.com", "https://www.zhihu.com/"))["state"], "error")
 
+    def test_verification_page_is_not_logged_in_or_out(self):
+        self.assertTrue(checkup.is_challenge({"title": "请稍候… - Google Chrome", "text": ""}))
+        self.assertTrue(checkup.is_challenge({"title": "", "text": "Just a moment...\nRay ID: 8a1b"}))
+        self.assertFalse(checkup.is_challenge({"title": "知乎", "text": "x" * 500 + " Ray ID"}))  # 正文里提到不算
+        patch, b = self.browser("https://www.v2ex.com/settings", text="隐私\nRay ID:")
+        b.read_page.return_value["title"] = "请稍候… - Google Chrome"
+        with patch, mock.patch.object(checkup, "SETTLE", 0), mock.patch.object(checkup, "CHALLENGE_WAIT", 0):
+            r = checkup.check_site(checkup.Probe("v2ex.com", "https://www.v2ex.com/settings"))
+        self.assertEqual(r["state"], "error")              # 没查到，不说登录着
+        self.assertIn("人机验证", r["detail"])
+        b.close_tab.assert_called_once()
+
+    def test_new_sites_are_probed(self):
+        for site in ("v2ex.com", "sspai.com", "juejin.cn"):
+            self.assertIn(site, checkup.SITES)
+        juejin = [p for p in checkup.PROBES if p.site == "juejin.cn"][0]
+        self.assertIn("「登录」", checkup.logged_out("https://juejin.cn/", False, "首页\n沸点\n登录\n注册", juejin))
+
     def test_run_stops_when_user_takes_over(self):
         sites = []
         with mock.patch.object(checkup, "_cli_tools", return_value=[]), \
