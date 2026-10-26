@@ -1,0 +1,2459 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AMI 中控</title>
+<script>
+  // 主题先设上，免得页面先闪一下另一种颜色
+  try { const t = localStorage.getItem("ami-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
+<style>
+  /* 现代控制台风格：中性灰、细边框；浅色 / 深色跟随系统，也可以手动切 */
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f8; --panel: #ffffff; --side: #fbfbfc; --sunken: #f3f3f5;
+    --ink: #18181b; --ink-2: #4f4f58; --muted: #8a8a94; --line: #e4e4e9; --line-2: #eeeef1;
+    --hover: rgba(24, 24, 27, .045); --sel: rgba(24, 24, 27, .075);
+    --accent: #5e6ad2; --accent-2: #4f5bc4; --accent-ink: #ffffff; --accent-soft: rgba(94, 106, 210, .11);
+    --ok: #17924f; --ok-soft: rgba(23, 146, 79, .1); --warn: #b26b00; --warn-soft: rgba(230, 150, 0, .13);
+    --err: #d33131; --err-soft: rgba(211, 49, 49, .09); --info: #2d6bd6; --info-soft: rgba(45, 107, 214, .09);
+    --av-s: 62%; --av-l: 92%; --av-s2: 42%; --av-l2: 36%;
+    --shadow-sm: 0 1px 2px rgba(16, 16, 20, .04);
+    --shadow-pop: 0 0 0 1px var(--line), 0 12px 32px -8px rgba(16, 16, 20, .2);
+    --scrim: rgba(15, 15, 20, .32);
+    --r: 10px; --r-sm: 6px; --side-w: 264px; --top-h: 52px;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", "PingFang SC", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0d0d10; --panel: #141418; --side: #111114; --sunken: #0f0f12;
+      --ink: #ececf1; --ink-2: #a8a8b3; --muted: #6f6f7a; --line: #26262d; --line-2: #1d1d23;
+      --hover: rgba(255, 255, 255, .045); --sel: rgba(255, 255, 255, .08);
+      --accent: #7c86ff; --accent-2: #8f97ff; --accent-ink: #0b0b1a; --accent-soft: rgba(124, 134, 255, .15);
+      --ok: #3fb96e; --ok-soft: rgba(63, 185, 110, .13); --warn: #e5a61c; --warn-soft: rgba(229, 166, 28, .13);
+      --err: #f2555a; --err-soft: rgba(242, 85, 90, .13); --info: #5ea2ff; --info-soft: rgba(94, 162, 255, .12);
+      --av-s: 32%; --av-l: 22%; --av-s2: 70%; --av-l2: 76%;
+      --shadow-sm: none; --shadow-pop: 0 0 0 1px var(--line), 0 16px 40px -8px rgba(0, 0, 0, .6); --scrim: rgba(0, 0, 0, .55);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0d0d10; --panel: #141418; --side: #111114; --sunken: #0f0f12;
+    --ink: #ececf1; --ink-2: #a8a8b3; --muted: #6f6f7a; --line: #26262d; --line-2: #1d1d23;
+    --hover: rgba(255, 255, 255, .045); --sel: rgba(255, 255, 255, .08);
+    --accent: #7c86ff; --accent-2: #8f97ff; --accent-ink: #0b0b1a; --accent-soft: rgba(124, 134, 255, .15);
+    --ok: #3fb96e; --ok-soft: rgba(63, 185, 110, .13); --warn: #e5a61c; --warn-soft: rgba(229, 166, 28, .13);
+    --err: #f2555a; --err-soft: rgba(242, 85, 90, .13); --info: #5ea2ff; --info-soft: rgba(94, 162, 255, .12);
+    --av-s: 32%; --av-l: 22%; --av-s2: 70%; --av-l2: 76%;
+    --shadow-sm: none; --shadow-pop: 0 0 0 1px var(--line), 0 16px 40px -8px rgba(0, 0, 0, .6); --scrim: rgba(0, 0, 0, .55);
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--accent-soft); }
+  * { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  a { color: inherit; }
+  svg { flex: none; display: block; }
+  [hidden] { display: none !important; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code, .mono { font-family: var(--mono); font-size: .92em; }
+  code { background: var(--sunken); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 4px; }
+  .muted { color: var(--muted); }
+
+  /* ---------- 外框：左边 agent 花名册，右边顶栏 + 工作区 ---------- */
+  .shell { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); min-height: 100vh; }
+  .side { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--line); min-width: 0; z-index: 30; }
+  .side-head { padding: 12px 12px 8px; display: flex; flex-direction: column; gap: 10px; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px; text-decoration: none; min-width: 0; }
+  .logo { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #9b6dd6); color: #fff; display: grid; place-items: center;
+          font-weight: 700; font-size: 14px; flex: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .15); }
+  .brand b { font-size: 14.5px; font-weight: 650; letter-spacing: -.01em; }
+  .brand small { display: block; font-size: 11.5px; color: var(--muted); font-weight: 400; margin-top: -2px; }
+  .brand .x { margin-left: auto; }
+  .brand-link { display: flex; align-items: center; gap: 10px; text-decoration: none; min-width: 0; }
+  .cmd-btn { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 8px 0 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+             background: var(--panel); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; box-shadow: var(--shadow-sm); }
+  .cmd-btn:hover { color: var(--ink-2); border-color: color-mix(in srgb, var(--line) 50%, var(--muted)); }
+  .cmd-btn kbd, .kbd { margin-left: auto; font: 500 11px var(--sans); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; background: var(--sunken); }
+  .roster { flex: 1; overflow-y: auto; padding: 4px 8px 12px; overscroll-behavior: contain; }
+  .r-sec { margin-top: 10px; }
+  .r-h { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 8px; border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted);
+         font-weight: 550; cursor: pointer; border-radius: var(--r-sm); text-align: left; }
+  .r-h:hover { color: var(--ink-2); background: var(--hover); }
+  .r-h svg { transition: transform .15s; transform: rotate(90deg); opacity: .7; }
+  .r-sec.closed .r-h svg { transform: none; }
+  .r-sec.closed .r-list { display: none; }
+  .r-h .grp { font-size: 11.5px; }
+  .r-h .n { margin-left: auto; font-weight: 400; font-variant-numeric: tabular-nums; }
+  .r-sec.attn .r-h { color: var(--err); }
+  .r-list { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+  .ag { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 0 10px; align-items: center; padding: 6px 8px; border-radius: var(--r-sm); text-decoration: none; color: var(--ink-2); }
+  .ag:hover { background: var(--hover); }
+  .ag.on { background: var(--sel); color: var(--ink); }
+  .ag .txt { min-width: 0; } .ag .nm, .ag .sub { display: block; }
+  .ag .nm { font-size: 13.5px; font-weight: 550; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag .sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag.error .sub { color: var(--err); } .ag.warn .sub { color: var(--warn); }
+  .ag.revoked { opacity: .55; }
+  .ag .flag { color: var(--err); }
+  .r-empty { margin: 8px; padding: 14px 12px; border: 1px dashed var(--line); border-radius: var(--r); color: var(--muted); font-size: 12.5px; text-align: center; }
+  .side-foot { border-top: 1px solid var(--line); padding: 10px 12px; display: flex; gap: 6px; }
+  .side-foot .btn { flex: 1; justify-content: center; }
+
+  /* 头像：按 id 算颜色，右下角是状态灯 */
+  .av { --h: 220; position: relative; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: none; font-size: 13px; font-weight: 650;
+        background: hsl(var(--h) var(--av-s) var(--av-l)); color: hsl(var(--h) var(--av-s2) var(--av-l2)); text-decoration: none; }
+  .av .dot { position: absolute; right: -2px; bottom: -2px; width: 10px; height: 10px; box-shadow: 0 0 0 2px var(--side); opacity: 1; }
+  .av.sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; } .av.sm .dot { width: 8px; height: 8px; right: -2px; bottom: -2px; }
+  .av.lg { width: 48px; height: 48px; border-radius: 12px; font-size: 20px; } .av.lg .dot { width: 13px; height: 13px; box-shadow: 0 0 0 3px var(--bg); }
+  .card .av .dot, .dlg .av .dot { box-shadow: 0 0 0 2px var(--panel); }
+
+  .main { min-width: 0; display: flex; flex-direction: column; }
+  .topbar { position: sticky; top: 0; z-index: 20; height: var(--top-h); display: flex; align-items: center; gap: 6px; padding: 0 16px 0 20px;
+            background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px);
+            border-bottom: 1px solid var(--line); }
+  .topnav { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .topnav::-webkit-scrollbar { display: none; }
+  .topnav a { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border-radius: var(--r-sm); text-decoration: none; color: var(--ink-2);
+              font-weight: 500; white-space: nowrap; }
+  .topnav a svg { color: var(--muted); }
+  .topnav a:hover { background: var(--hover); color: var(--ink); }
+  .topnav a.on { background: var(--sel); color: var(--ink); } .topnav a.on svg { color: var(--ink); }
+  .topnav .n { font-size: 11.5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
+  .top-r { margin-left: auto; display: flex; align-items: center; gap: 4px; flex: none; }
+  .conn { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); padding: 0 8px; white-space: nowrap; }
+  .me-btn { border: 0; background: none; padding: 3px; border-radius: 50%; cursor: pointer; margin-left: 4px; }
+  .me-btn:hover { background: var(--hover); }
+  .me-btn .av { width: 28px; height: 28px; border-radius: 50%; --h: 250; }
+  .icon-btn.burger { display: none; }
+  .content { padding: 28px 32px 72px; width: 100%; max-width: 1320px; margin: 0 auto; }
+  .scrim { display: none; }
+  @media (max-width: 960px) {
+    .shell { grid-template-columns: minmax(0, 1fr); }
+    .side { position: fixed; left: 0; top: 0; bottom: 0; width: min(300px, 86vw); height: auto; transform: translateX(-102%); transition: transform .2s ease; z-index: 50; box-shadow: var(--shadow-pop); }
+    .shell.nav-open .side { transform: none; }
+    .shell.nav-open .scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 45; }
+    .icon-btn.burger { display: inline-grid; }
+    .topbar { padding: 0 8px; gap: 2px; }
+    .topnav a { padding: 0 9px; } .topnav a svg { display: none; }
+    .conn span:last-child, .top-r .btn .lbl, .top-r #btn-notify { display: none; }
+    .content { padding: 20px 16px 72px; }
+  }
+  @media (max-width: 480px) { .top-r #btn-theme { display: none; } }
+
+  /* ---------- 通用 ---------- */
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  .page-head > div:first-child { min-width: 0; }
+  h1 { font-size: 22px; line-height: 1.3; margin: 0; font-weight: 650; letter-spacing: -.015em; overflow-wrap: anywhere; }
+  .page-head p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+  .head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .back { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); text-decoration: none; font-size: 13px; margin-bottom: 12px; }
+  .back:hover { color: var(--ink); }
+  .section-title { display: flex; align-items: center; justify-content: space-between; gap: 4px 12px; margin: 0 0 12px; min-height: 24px; flex-wrap: wrap; }
+  .section-title h2 { font-size: 14px; margin: 0; font-weight: 600; display: flex; align-items: center; gap: 8px; flex: none; max-width: 100%; }
+  .section-title h2 small { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+  .section-title .hint { font-size: 12.5px; color: var(--muted); }
+  .card-head-link, .section-title > a { font-size: 12.5px; color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .card-head-link:hover, .section-title > a:hover { color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; min-width: 0; box-shadow: var(--shadow-sm); }
+  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; opacity: .55; }
+  .dot.on { background: var(--ok); opacity: 1; }
+  .dot.warn { background: var(--warn); opacity: 1; }
+  .dot.error { background: var(--err); opacity: 1; }
+  .dot.run { background: var(--accent); opacity: 1; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .dot.run { animation: none; } * { transition: none !important; } }
+  .btn { font: inherit; font-size: 13px; font-weight: 550; height: 32px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+         border-radius: var(--r-sm); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; box-shadow: var(--shadow-sm);
+         transition: background .12s, border-color .12s; text-decoration: none; }
+  .btn:hover { background: color-mix(in srgb, var(--panel) 94%, var(--ink)); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  .btn.danger { color: var(--err); }
+  .btn.danger:hover { background: var(--err-soft); border-color: color-mix(in srgb, var(--err) 35%, var(--line)); }
+  .btn.danger.solid { background: var(--err); border-color: var(--err); color: #fff; }
+  .btn.ghost { border-color: transparent; background: none; box-shadow: none; color: var(--ink-2); }
+  .btn.ghost:hover { background: var(--hover); color: var(--ink); }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+  .icon-btn { border: 0; background: none; color: var(--muted); width: 32px; height: 32px; border-radius: var(--r-sm); display: inline-grid; place-items: center; cursor: pointer; padding: 0; flex: none; }
+  .icon-btn:hover { background: var(--hover); color: var(--ink); }
+  .icon-btn.sm { width: 26px; height: 26px; }
+  input, select, textarea { font: inherit; font-size: 13.5px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: var(--r-sm); padding: 6px 10px; width: 100%; min-height: 34px; }
+  input::placeholder, textarea::placeholder { color: var(--muted); }
+  textarea { font: 12.5px/1.6 var(--mono); resize: vertical; display: block; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 550; line-height: 20px; padding: 0 8px; border-radius: 999px; background: var(--line-2); color: var(--ink-2); white-space: nowrap; }
+  .pill.on { background: var(--ok-soft); color: var(--ok); } .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.error { background: var(--err-soft); color: var(--err); } .pill.info { background: var(--info-soft); color: var(--info); }
+  .pill .dot { width: 6px; height: 6px; }
+  .tag { font-size: 11.5px; line-height: 18px; border-radius: 4px; padding: 0 6px; background: var(--line-2); color: var(--ink-2); white-space: nowrap; }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); } .tag.error { background: var(--err-soft); color: var(--err); }
+  .grp { font: 500 11.5px/18px var(--mono); padding: 0 6px; border-radius: 4px; background: var(--info-soft); color: var(--info); white-space: nowrap; }
+  .grp::before { content: "#"; opacity: .6; }
+  .owner { font-size: 12px; color: var(--muted); font-weight: 400; white-space: nowrap; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--sunken); border: 1px solid var(--line-2); border-radius: 5px; padding: 0 7px; font-size: 12.5px; max-width: 100%; overflow-wrap: anywhere; }
+  .chip.mono { font-family: var(--mono); font-size: 11.5px; }
+  .empty { color: var(--muted); margin: 0; }
+  .empty.sm { font-size: 12.5px; }
+  dl.fields { display: grid; grid-template-columns: minmax(80px, max-content) minmax(0, 1fr); gap: 7px 18px; margin: 0; }
+  dl.fields dt { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  dl.fields dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
+  .sublist { display: flex; flex-direction: column; gap: 6px; }
+  .subitem { background: var(--sunken); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 8px 10px; }
+  .summary-big { font-size: 16px; font-weight: 550; margin: 0 0 12px; overflow-wrap: anywhere; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar select { width: auto; min-width: 150px; max-width: 100%; }
+  .search { position: relative; flex: 1; min-width: 200px; display: block; }
+  .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+  .search input { padding-left: 32px; }
+  @media (max-width: 600px) { .toolbar select { flex: 1; } }
+  .seg { display: inline-flex; background: var(--sunken); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 2px; gap: 2px; flex-wrap: wrap; }
+  .seg button { border: 0; background: none; font: inherit; font-size: 12.5px; color: var(--ink-2); padding: 3px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+  .seg button span { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .seg button.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--shadow-sm); }
+  .more { display: flex; justify-content: center; padding-top: 12px; }
+  .feed-end { text-align: center; font-size: 12px; color: var(--muted); padding-top: 12px; }
+  details.more-info { margin-top: 6px; }
+  details.more-info summary { cursor: pointer; font-size: 12px; color: var(--muted); width: fit-content; }
+  details.more-info summary:hover { color: var(--ink-2); }
+  details.more-info .box { margin-top: 6px; background: var(--sunken); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 10px 12px; }
+  pre.json { margin: 0; background: var(--sunken); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 10px 12px; font: 12px/1.6 var(--mono); color: var(--ink);
+             white-space: pre-wrap; overflow-wrap: anywhere; max-height: 460px; overflow: auto; }
+  details .box pre.json { border: 0; padding: 0; }
+  .err-box { background: var(--err-soft); color: var(--err); border-radius: var(--r-sm); padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+  .err-box.warn { background: var(--warn-soft); color: var(--warn); }
+  .bar { height: 6px; background: var(--line-2); border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+  ul.plain { margin: 0; padding-left: 18px; color: var(--ink-2); } ul.plain li + li { margin-top: 6px; } ul.plain b { color: var(--ink); font-weight: 600; }
+  .empty-state { text-align: center; padding: 48px 20px; }
+  .empty-state .ic { width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; margin: 0 auto 14px; }
+  .empty-state h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+  .empty-state p { margin: 0 auto 18px; color: var(--muted); max-width: 440px; }
+  .empty-state .head-actions { justify-content: center; }
+
+  /* 数字卡片 */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; text-decoration: none; color: inherit; font: inherit; text-align: left;
+          box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  a.stat, button.stat { cursor: pointer; transition: border-color .12s; } a.stat:hover, button.stat:hover { border-color: color-mix(in srgb, var(--line) 40%, var(--muted)); }
+  .stat.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .stat span { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .stat b { font-size: 24px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.25; }
+  .stat small { font-size: 12px; color: var(--muted); }
+  .stat.info b { color: var(--info); } .stat.run b { color: var(--accent); } .stat.error b { color: var(--err); } .stat.warn b { color: var(--warn); } .stat.ok b { color: var(--ok); }
+  .mini-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .mini-stats > * { background: var(--sunken); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 8px 10px; text-decoration: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .mini-stats > *:hover { border-color: var(--line); }
+  .mini-stats b { display: block; font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .mini-stats span { font-size: 11.5px; color: var(--muted); }
+  .mini-stats .info b { color: var(--info); } .mini-stats .run b { color: var(--accent); } .mini-stats .error b { color: var(--err); }
+
+  /* ---------- 动态时间线 ---------- */
+  .day { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 0 2px; }
+  .day small { font-weight: 400; }
+  .feed > .day:first-child { padding-top: 0; }
+  .timeline { list-style: none; margin: 0; padding: 0; }
+  .ev { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; padding: 10px 6px; margin: 0 -6px; border-radius: var(--r-sm); transition: background 1.2s; }
+  .ev + .ev { box-shadow: 0 -1px 0 var(--line-2); }
+  .ev.fresh { background: var(--accent-soft); transition: none; }
+  .ev-ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--line-2); color: var(--muted); text-decoration: none; }
+  .ev-ic.warn { background: var(--warn-soft); color: var(--warn); } .ev-ic.error { background: var(--err-soft); color: var(--err); }
+  .ev-ic.av { font-size: 12px; }
+  .ev .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; margin-bottom: 2px; }
+  .ev .who { font-weight: 600; text-decoration: none; font-size: 13px; } .ev .who:hover { color: var(--accent); }
+  .ev .text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+  .ev.warn .text { color: var(--warn); } .ev.error .text { color: var(--err); }
+  .ev .text.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .text-more { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; }
+  .ev time { font-size: 12px; color: var(--muted); white-space: nowrap; padding-top: 2px; font-variant-numeric: tabular-nums; }
+  .new-pill { position: fixed; top: calc(var(--top-h) + 12px); left: 50%; transform: translateX(-50%); z-index: 25; border-radius: 999px; box-shadow: var(--shadow-pop); }
+  @media (min-width: 961px) { .new-pill { left: calc(50% + var(--side-w) / 2); } }
+
+  /* ---------- 中控台 ---------- */
+  .attn { border-color: color-mix(in srgb, var(--err) 30%, var(--line)); }
+  .attn .section-title h2 { color: var(--err); }
+  .attn-list { display: flex; flex-direction: column; }
+  .attn-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 8px; margin: 0 -8px; border-radius: var(--r-sm); text-decoration: none; }
+  .attn-row + .attn-row { box-shadow: 0 -1px 0 var(--line-2); }
+  .attn-row:hover { background: var(--hover); }
+  .attn-row .t { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+  .attn-row p { margin: 1px 0 0; font-size: 13px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attn-row > svg { color: var(--muted); }
+  .attn-foot { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+  .attn-foot a { color: var(--accent); }
+  .ov-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .ov-grid { grid-template-columns: minmax(0, 1fr); } }
+  .lanes { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .lane { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+  .lane-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .lane-h b { font-weight: 600; }
+  .lane-n { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .lane-n b { color: var(--ink); font-variant-numeric: tabular-nums; } .lane-n b.q { color: var(--info); } .lane-n b.r { color: var(--accent); }
+  .lane-ags { display: flex; flex-direction: column; gap: 2px; margin: 0 -6px; }
+  .lane-ag { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: var(--r-sm); text-decoration: none; font-size: 13px; min-width: 0; }
+  .lane-ag:hover { background: var(--hover); }
+  .lane-ag span:not(.av) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lane-ag .st { margin-left: auto; font-size: 12px; color: var(--muted); flex: none; }
+  .lane-f { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 2px; }
+  .lane-f a { font-size: 12.5px; color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; } .lane-f a:hover { color: var(--accent); }
+  .onboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 8px; text-align: left; }
+  .onboard > div { background: var(--sunken); border: 1px solid var(--line-2); border-radius: var(--r); padding: 14px; }
+  .onboard b { display: block; margin-bottom: 4px; } .onboard p { margin: 0; font-size: 13px; }
+  .onboard i { font-style: normal; color: var(--accent); font-weight: 650; margin-right: 6px; }
+  @media (max-width: 700px) { .onboard { grid-template-columns: minmax(0, 1fr); } }
+
+  /* ---------- agent 工作区 ---------- */
+  .ws-head { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 14px; }
+  .ws-title { flex: 1; min-width: 220px; }
+  .ws-title p { margin: 4px 0 0; color: var(--ink-2); overflow-wrap: anywhere; }
+  .ws-title .meta-row { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+  .ws-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 20px; overflow-x: auto; scrollbar-width: none; }
+  .ws-tabs::-webkit-scrollbar { display: none; }
+  .ws-tabs a { display: inline-flex; align-items: center; gap: 6px; padding: 9px 10px; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent;
+               margin-bottom: -1px; white-space: nowrap; font-weight: 500; }
+  .ws-tabs a:hover { color: var(--ink); }
+  .ws-tabs a.on { color: var(--ink); border-color: var(--accent); }
+  .ws-tabs .n { font-size: 11px; line-height: 17px; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--line-2); color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+  .ws-tabs .n.err { background: var(--err-soft); color: var(--err); } .ws-tabs .n.run { background: var(--accent-soft); color: var(--accent); }
+  .ws-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .ws-grid { grid-template-columns: minmax(0, 1fr); } }
+  .chk-sum { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .chk-sum p { margin: 6px 0 0; width: 100%; font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+  .kv-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .danger-zone { border-color: color-mix(in srgb, var(--err) 25%, var(--line)); }
+  .danger-zone .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .danger-zone p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+  .secret { display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 0 4px 0 10px; min-height: 36px; background: var(--sunken); min-width: 0; }
+  .secret span { flex: 1; min-width: 0; font: 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .secret.revealed span { white-space: normal; overflow-wrap: anywhere; }
+  .secret.off span { font-family: var(--sans); color: var(--muted); padding: 8px 0; white-space: normal; }
+
+  /* ---------- 任务 ---------- */
+  .task-list { display: flex; flex-direction: column; }
+  .task-row { display: grid; grid-template-columns: 52px minmax(0, 1.1fr) minmax(0, 1.5fr) 88px 76px; gap: 14px; align-items: center;
+              padding: 10px 8px; margin: 0 -8px; border-radius: var(--r-sm); text-decoration: none; transition: background 1.2s; }
+  .task-row + .task-row { box-shadow: 0 -1px 0 var(--line-2); }
+  .task-row:hover { background: var(--hover); transition: background .1s; }
+  .task-row.fresh { background: var(--accent-soft); transition: none; }
+  .task-row .tid { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .task-row .tk { font-weight: 600; font-family: var(--mono); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-row .route { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-row .note { font-size: 13px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-row .note.warn { color: var(--warn); } .task-row .note.error { color: var(--err); }
+  .task-row .pill { justify-self: start; }
+  .task-row time { font-size: 12px; color: var(--muted); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  @media (max-width: 800px) {
+    .task-row { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
+    .task-row .tid { display: none; }
+    .task-row > div:first-of-type { grid-column: 1; grid-row: 1; } .task-row .note { grid-column: 1; grid-row: 2; }
+    .task-row .pill { grid-column: 2; grid-row: 1; justify-self: end; } .task-row time { grid-column: 2; grid-row: 2; }
+  }
+  .queue-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .queue-card { text-align: left; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+                padding: 12px 14px; cursor: pointer; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 8px; transition: border-color .12s; }
+  .queue-card:hover { border-color: color-mix(in srgb, var(--line) 40%, var(--muted)); }
+  .queue-card.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .queue-card .qh { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .queue-card .qh .owner { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+  .queue-card .qn { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .queue-card .qn b { color: var(--ink); font-size: 14px; font-variant-numeric: tabular-nums; margin-right: 3px; }
+  .queue-card .qn b.q { color: var(--info); }
+  .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 1000px) { .detail-grid { grid-template-columns: minmax(0, 1fr); } }
+  .legend { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 16px; align-items: center; }
+  .legend p { margin: 0; color: var(--ink-2); }
+
+  /* ---------- 用户 ---------- */
+  .user-row { display: grid; grid-template-columns: minmax(160px, 1fr) 90px 80px 130px 300px; gap: 16px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line-2); }
+  .user-row.head { font-size: 12px; color: var(--muted); font-weight: 600; padding: 0 0 10px; border-top: 0; }
+  .user-row.head + .user-row { border-top: 0; }
+  .user-row .nm { font-weight: 600; display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+  .user-row .sm { font-size: 13px; color: var(--muted); }
+  .user-row .ops { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+  .user-row.off .nm span:first-child { color: var(--muted); text-decoration: line-through; }
+  @media (max-width: 1000px) {
+    .user-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; } .user-row.head { display: none; }
+    .user-row .when, .user-row .cnt { display: none; } .user-row .ops { grid-column: 1 / -1; justify-content: flex-start; }
+  }
+
+  /* ---------- 接入指南 ---------- */
+  .steps { counter-reset: step; display: flex; flex-direction: column; gap: 20px; }
+  .step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px; }
+  .step::before { counter-increment: step; content: counter(step); width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+                  font-weight: 650; font-size: 13px; display: grid; place-items: center; }
+  .step h3 { margin: 2px 0 4px; font-size: 14.5px; font-weight: 600; }
+  .step p { margin: 0 0 12px; color: var(--ink-2); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row select { width: auto; min-width: 220px; max-width: 100%; }
+
+  /* ---------- 每日自检 ---------- */
+  .sched { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13px; }
+  .sched input[type=time] { width: auto; padding: 4px 8px; min-height: 30px; }
+  .sched input[type=time]:disabled { opacity: .5; }
+  .sched .btn { margin-left: auto; }
+  .check { display: flex !important; align-items: center; gap: 8px; cursor: pointer; }
+  .check input { width: auto; min-height: 0; margin: 0; accent-color: var(--accent); }
+  .chk-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12.5px; color: var(--muted); }
+  .chk-head a { color: inherit; } .chk-head a:hover { color: var(--accent); }
+  .chk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .chk { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; padding: 9px 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--sunken); }
+  .chk > svg { color: var(--ok); margin-top: 3px; }
+  .chk.bad { border-color: color-mix(in srgb, var(--err) 35%, var(--line)); background: var(--err-soft); } .chk.bad > svg { color: var(--err); }
+  .chk .nm { font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .chk .msg { color: var(--ink-2); font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .chk .fix { color: var(--warn); font-size: 13px; } .chk .fix::before { content: "→ "; }
+  .chk time { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .chk-fix { margin: 8px 0 0; color: var(--warn); font-size: 13px; } .chk-fix::before { content: "→ "; }
+
+  /* ---------- 汇报 ---------- */
+  .rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 12px; align-items: start; }
+  .rp-hist { display: flex; flex-direction: column; gap: 12px; }
+  .rp { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .rp.attn { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+  .rp.bad { border-color: color-mix(in srgb, var(--err) 30%, var(--line)); }
+  .rp-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .rp-h .nm { font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .rp-h a.nm:hover { color: var(--accent); }
+  .rp-h time { margin-left: auto; padding-left: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .rp-sum { margin: 0; font-size: 15px; font-weight: 550; overflow-wrap: anywhere; }
+  .rp-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .rp-metrics div { background: var(--sunken); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 6px 10px; min-width: 0; }
+  .rp-metrics b { display: block; font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .rp-metrics span { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+  .rp-sec h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .rp-sec ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
+  .rp-sec li { overflow-wrap: anywhere; } .rp-sec li + li { margin-top: 3px; }
+  .rp-sec.issues h4 { color: var(--warn); } .rp-sec.issues ul { color: var(--ink); }
+  .rp-last { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+  .rp-wait { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; }
+  .rm-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+  .rm { display: grid; grid-template-columns: minmax(90px, 160px) repeat(var(--cols), minmax(22px, 1fr)); gap: 4px; align-items: center; min-width: min-content; }
+  .rm .nm { font-size: 12.5px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+  .rm a.nm:hover { color: var(--accent); }
+  .rm .col { border: 0; background: none; font: inherit; font-size: 11px; color: var(--muted); padding: 2px 0; cursor: pointer; border-radius: 4px; font-variant-numeric: tabular-nums; }
+  .rm .col:hover, .rm .col.on { color: var(--accent); background: var(--accent-soft); }
+  .rm .c { height: 20px; border-radius: 4px; border: 0; padding: 0; cursor: pointer; }
+  .c { background: var(--line-2); }
+  .c.ok { background: var(--ok); opacity: .75; } .c.warn { background: var(--warn); opacity: .8; } .c.err { background: var(--err); opacity: .7; }
+  .c.off { background: repeating-linear-gradient(45deg, var(--line-2) 0 3px, var(--line) 3px 6px); }
+  .c.pend { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .c.none { background: transparent; box-shadow: inset 0 0 0 1px var(--line); } .rm .c.none { cursor: default; }
+  .rm .c.sel { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .rm-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+  .rm-legend span { display: inline-flex; align-items: center; gap: 6px; } .rm-legend .c { width: 12px; height: 12px; display: inline-block; border-radius: 3px; }
+
+  /* ---------- 能力 ---------- */
+  .cap-list { display: flex; flex-direction: column; gap: 12px; }
+  .cap-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cap-head h3 { margin: 0; font-size: 14.5px; font-weight: 600; }
+  .cap-head .btn { margin-left: auto; }
+  .cap-kind { font: 600 12.5px/1.6 var(--mono); color: var(--accent); background: var(--accent-soft); border-radius: 5px; padding: 0 7px; overflow-wrap: anywhere; }
+  .cap-desc { margin: 8px 0 0; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cap-by { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  .cap-by a { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); text-decoration: none; } .cap-by a:hover { color: var(--accent); }
+  .cap-io { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 12px; }
+  .cap-io > div { background: var(--sunken); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 10px 12px; min-width: 0; }
+  .cap-io > div > pre.json { padding: 0; border: 0; background: none; }
+  .cap-io h4 { margin: 0 0 6px; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  .cap-mini { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .cap-mini li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 6px 6px 10px;
+                 border: 1px solid var(--line-2); border-radius: var(--r-sm); background: var(--sunken); }
+  .cap-mini li > span:not(.cap-kind) { color: var(--ink-2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---------- 弹窗 / 菜单 / 命令面板 / 提示 ---------- */
+  dialog { border: 0; border-radius: 12px; background: var(--panel); color: var(--ink); padding: 22px; width: min(500px, calc(100vw - 32px)); box-shadow: var(--shadow-pop); }
+  dialog::backdrop { background: var(--scrim); backdrop-filter: blur(2px); }
+  dialog h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+  dialog p { margin: 0 0 14px; color: var(--ink-2); }
+  dialog form > h3 + p { margin-bottom: 4px; }
+  dialog label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-2); margin: 14px 0 6px; }
+  dialog label small { font-weight: 400; color: var(--muted); }
+  dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+  .form-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 480px) { .form-row { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+  .field-hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; min-height: 1.2em; }
+  .field-hint.warn { color: var(--warn); } .field-hint.ok { color: var(--ok); }
+  .err-msg { color: var(--err); font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+  #dlg-cmd { padding: 0; width: min(620px, calc(100vw - 24px)); margin-top: min(14vh, 120px); overflow: hidden; }
+  .cmd-in { display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+  .cmd-in svg { color: var(--muted); }
+  .cmd-in input { border: 0; box-shadow: none !important; padding: 15px 0; font-size: 15px; background: none; }
+  .cmd-list { max-height: min(60vh, 420px); overflow-y: auto; padding: 6px; }
+  .cmd-sec { font-size: 11.5px; color: var(--muted); font-weight: 600; padding: 8px 10px 4px; }
+  .cmd-it { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; padding: 7px 10px; border-radius: var(--r-sm); cursor: pointer; min-height: 38px; }
+  .cmd-it > svg { color: var(--muted); }
+  .cmd-it .lbl { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cmd-it .sub { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .cmd-it.sel { background: var(--sel); }
+  .cmd-empty { padding: 28px; text-align: center; color: var(--muted); }
+  .cmd-foot { border-top: 1px solid var(--line); padding: 8px 14px; font-size: 12px; color: var(--muted); display: flex; gap: 14px; }
+  .menu { position: fixed; z-index: 60; background: var(--panel); border-radius: 10px; box-shadow: var(--shadow-pop); padding: 5px; min-width: 210px; }
+  .menu .mh { padding: 8px 10px 6px; font-size: 12.5px; color: var(--muted); }
+  .menu .mh b { display: block; color: var(--ink); font-size: 13.5px; }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+  .mi { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; font: inherit; font-size: 13.5px; color: var(--ink); padding: 7px 10px; border-radius: var(--r-sm); cursor: pointer; text-align: left; }
+  .mi svg { color: var(--muted); } .mi:hover { background: var(--hover); }
+  .mi small { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .mi.danger { color: var(--err); } .mi.danger svg { color: var(--err); }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 16px); opacity: 0; background: var(--ink); color: var(--panel); padding: 9px 14px; border-radius: 8px;
+           font-size: 13px; font-weight: 500; transition: opacity .16s, transform .16s; pointer-events: none; z-index: 100; display: flex; gap: 8px; align-items: center;
+           max-width: calc(100vw - 32px); box-shadow: var(--shadow-pop); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.error { background: var(--err); color: #fff; }
+
+  /* ---------- 登录 ---------- */
+  .login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+           background: radial-gradient(800px 400px at 50% -10%, var(--accent-soft), transparent 70%), var(--bg); }
+  .login form { width: min(380px, 100%); }
+  .login .brand { justify-content: center; flex-direction: column; gap: 12px; text-align: center; margin-bottom: 22px; }
+  .login .logo { width: 44px; height: 44px; font-size: 20px; border-radius: 12px; }
+  .login h1 { font-size: 20px; }
+  .login .brand p { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .login .card { padding: 22px; }
+  .login label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-2); margin: 0 0 6px; }
+  .login label + input { margin-bottom: 14px; }
+  .login .btn { width: 100%; justify-content: center; height: 36px; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<div class="login" id="login" hidden>
+  <form id="login-form">
+    <div class="brand"><div class="logo">A</div><div><h1>登录 AMI 中控</h1><p>集中管理、调度你的 agent</p></div></div>
+    <div class="card">
+      <label for="login-user">用户名</label><input id="login-user" autocomplete="username" spellcheck="false" required>
+      <label for="login-pass">密码</label><input id="login-pass" type="password" autocomplete="current-password" required>
+      <div class="err-msg" id="login-err"></div>
+      <button class="btn primary" type="submit">登录</button>
+    </div>
+  </form>
+</div>
+
+<div class="shell" id="shell" hidden>
+  <aside class="side" id="side">
+    <div class="side-head">
+      <div class="brand"><a href="#/overview" class="brand-link"><div class="logo">A</div><div><b>AMI 中控</b><small>Agent control plane</small></div></a>
+        <button type="button" class="icon-btn sm x" id="btn-new-agent" title="接入新 agent" aria-label="接入新 agent"></button></div>
+      <button class="cmd-btn" id="btn-cmd" type="button"></button>
+    </div>
+    <div class="roster" id="roster"></div>
+    <div class="side-foot"><button class="btn sm" data-act="new-key" id="btn-new-agent-2"></button><a class="btn sm ghost" href="#/guide" id="btn-guide"></a></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn burger" id="btn-burger" aria-label="打开 agent 列表"></button>
+      <nav class="topnav" id="topnav"></nav>
+      <div class="top-r">
+        <span class="conn" id="conn-wrap"><span id="conn-dot" class="dot"></span><span id="conn">未连接</span></span>
+        <button class="btn primary sm" data-act="new-task" id="btn-dispatch"></button>
+        <button class="icon-btn" id="btn-theme" aria-label="切换主题"></button>
+        <button class="icon-btn" id="btn-notify" title="通知设置" aria-label="通知设置"></button>
+        <button class="me-btn" id="btn-me" aria-label="账号菜单"><span class="av" id="avatar"></span></button>
+      </div>
+    </header>
+    <main class="content" id="page"></main>
+  </div>
+</div>
+
+<div class="menu" id="menu" hidden></div>
+
+<dialog id="dlg-cmd">
+  <div class="cmd-in"><span id="cmd-ic"></span><input id="cmd-q" placeholder="搜索 agent、能力、页面，或输入要做的事…" autocomplete="off" spellcheck="false"><span class="kbd">Esc</span></div>
+  <div class="cmd-list" id="cmd-list"></div>
+  <div class="cmd-foot"><span>↑↓ 选择</span><span>↵ 打开</span><span>⌘K / Ctrl K 随时呼出</span></div>
+</dialog>
+
+<dialog id="dlg-name">
+  <form id="name-form">
+    <h3 id="name-title">接入新 agent</h3>
+    <p id="name-desc">给这个 agent 起个名字，方便在列表里认出它。</p>
+    <input id="name-input" placeholder="比如：小暖 · 家里的 Mac" maxlength="80" autocomplete="off">
+    <div id="name-group-wrap">
+      <label for="name-group">分组 <small>· 可选，同组的 agent 共享一个任务队列，创建后不能改</small></label>
+      <input id="name-group" list="group-list" placeholder="比如：translate；留空就是不分组" maxlength="32" autocomplete="off" spellcheck="false">
+      <datalist id="group-list"></datalist>
+      <div class="field-hint" id="name-group-hint"></div>
+    </div>
+    <div class="err-msg" id="name-err"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit" id="name-ok">创建</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-key">
+  <h3 id="key-title">已创建</h3>
+  <p>把接入说明发给这个 agent（或负责它的同事），它开始上报后就会出现在左侧的 agent 列表里。key 之后随时可以在 agent 的「设置」里查看。</p>
+  <div class="secret revealed" id="key-box"></div>
+  <div class="actions"><button class="btn ghost" data-close>完成</button><button class="btn primary" id="key-guide"></button></div>
+</dialog>
+
+<dialog id="dlg-task">
+  <form id="task-form">
+    <h3>派任务</h3>
+    <p>任务进入选中的队列，能领这个队列的 agent 里会有一个把它领走。</p>
+    <label for="task-q">队列</label><select id="task-q"></select>
+    <div class="field-hint" id="task-q-hint"></div>
+    <label for="task-kind">类型 <small>· kind，领任务的 agent 据此决定怎么做</small></label><input id="task-kind" list="task-kinds" placeholder="比如：translate" maxlength="64" autocomplete="off" spellcheck="false">
+    <datalist id="task-kinds"></datalist>
+    <div class="field-hint" id="task-kind-hint"></div>
+    <label for="task-payload">内容 <small>· JSON 或纯文本，可留空</small></label>
+    <textarea id="task-payload" rows="6" placeholder='{"text": "hello"}'></textarea>
+    <div class="form-row">
+      <div><label for="task-pri">优先级</label><input id="task-pri" type="number" value="0" min="-100" max="100"></div>
+      <div><label for="task-att">最多尝试</label><input id="task-att" type="number" value="3" min="1" max="20"></div>
+      <div><label for="task-timeout">每次时限（秒）</label><input id="task-timeout" type="number" value="600" min="10" max="86400"></div>
+    </div>
+    <div class="err-msg" id="task-err"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit" id="task-ok">派出</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-user">
+  <form id="user-form">
+    <h3>添加用户</h3>
+    <p>用户登录后只能看到自己的 agent、动态和任务，队列也和别人隔开。</p>
+    <label for="user-name">用户名</label><input id="user-name" maxlength="32" autocomplete="off" spellcheck="false">
+    <label for="user-pass">初始密码 <small>· 至少 8 位，发给对方后让对方登录后自己改</small></label>
+    <input id="user-pass" autocomplete="off" spellcheck="false">
+    <label class="check"><input type="checkbox" id="user-admin">管理员：能看到并管理所有人的数据</label>
+    <div class="err-msg" id="user-err"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit" id="user-ok">添加</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-pass">
+  <form id="pass-form">
+    <h3 id="pass-title">修改密码</h3>
+    <p id="pass-desc">改完之后，其它设备上的登录会失效。</p>
+    <div id="pass-old-wrap"><label for="pass-old">当前密码</label><input id="pass-old" type="password" autocomplete="current-password"></div>
+    <label for="pass-new">新密码 <small>· 至少 8 位</small></label><input id="pass-new" type="password" autocomplete="new-password">
+    <div class="err-msg" id="pass-err"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit" id="pass-ok">保存</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-notify">
+  <form id="notify-form">
+    <h3>通知</h3>
+    <p>agent 每日自检没通过、或者恢复正常时，往这个地址推一条消息。不填就只在控制台里提醒。</p>
+    <label for="notify-url">Webhook 地址 <small>· 飞书 / Lark、钉钉、企业微信的群机器人，Slack、Discord，或任何接收 JSON POST 的地址</small></label>
+    <input id="notify-url" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…" maxlength="1000" spellcheck="false" autocomplete="off">
+    <div class="field-hint" id="notify-msg">机器人开了关键词校验的话，把「AMI」加进关键词。</div>
+    <div class="actions"><button type="button" class="btn" id="notify-test">发送测试</button><span style="flex:1"></span>
+      <button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit" id="notify-ok">保存</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-confirm">
+  <h3 id="cf-title"></h3>
+  <p id="cf-msg"></p>
+  <div class="actions"><button class="btn ghost" id="cf-cancel">取消</button><button class="btn" id="cf-ok"></button></div>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+<button class="btn primary sm new-pill" id="new-pill" hidden></button>
+
+<script>
+/* ================= 基础 ================= */
+const ICONS = {
+  overview: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
+  agents: '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4.5M9 13.5v.5M15 13.5v.5M9.5 17h5"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M10.9 12.1 20 3M16.5 6.5l3 3M13.5 9.5l2 2"/>',
+  guide: '<path d="M5 4.5h10.5A3.5 3.5 0 0 1 19 8v12H8.5A3.5 3.5 0 0 1 5 16.5z"/><path d="M5 16.5A3.5 3.5 0 0 1 8.5 13H19"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  logout: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  rotate: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
+  back: '<path d="M15 18l-6-6 6-6"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  send: '<path d="M21 3 10 14M21 3l-6.5 18-4-8-8-4z"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17v.5"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/>',
+  lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>',
+  tasks: '<path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  shield: '<path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/>',
+  caps: '<path d="M12 3 3.5 7.5 12 12l8.5-4.5z"/><path d="M3.5 12 12 16.5 20.5 12M3.5 16.5 12 21l8.5-4.5"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+  monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2"/><circle cx="12" cy="12" r="7"/>',
+};
+ICONS.report = '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5v-1h6v1M9 10h6M9 13.5h6M9 17h3"/>';
+const icon = (n, s = 16) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let agents = [], onlineWindow = 120, skew = 0, es = null, checkTz = "";
+let route = { page: "overview", id: null, tab: "overview" };
+let feed = { key: null, events: [], hasMore: false, counts: null, loading: false };   // 当前页面的动态（中控台 / 动态页 / agent 工作区）
+const fresh = new Map();   // 刚到的动态 id → 到达时间，用来高亮一下
+let revealed = new Set();
+let ui = { cq: "", atk: "", rr: "", guideAgent: null, ev: { agent: "", level: "", q: "" }, tk: { status: "", queue: "", agent: "", q: "" }, unseen: 0,
+           closed: new Set(["revoked"]), navOpen: false };
+let me = null, queues = [], users = null;
+let tasks = { key: null, items: [], hasMore: false, loading: false };   // 当前页面的任务列表
+let taskDetail = { id: null, task: null };
+let taskStats = null, scopedStats = { scope: null, s: null };   // 全局（导航计数）/ 当前页面范围内的任务统计
+const freshTask = new Map();
+let reportHours = 4;
+let reports = { latest: null, rounds: [], cells: [], every: 4, next: null };   // 汇报页：每个 agent 最新的汇报 + 最近几轮
+let roundView = { key: null, items: null };                                   // 汇报页选中的那一轮
+let agentReports = { id: null, items: null, hasMore: false, loading: false };   // agent 工作区的汇报记录
+
+const now = () => Date.now() / 1000 + skew;
+const byId = id => agents.find(a => a.id === id);
+const live = () => agents.filter(a => !a.revoked);
+const mins = () => Math.round(onlineWindow / 60);
+function clock(ts) { return new Date(ts * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }); }
+function dayLabel(ts) {
+  const d = new Date(ts * 1000), diff = Math.round((new Date(new Date().toDateString()) - new Date(d.toDateString())) / 86400000);
+  return diff === 0 ? "今天" : diff === 1 ? "昨天" : d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+}
+const date = ts => ts ? new Date(ts * 1000).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }) : "—";
+function ago(ts, never = "还没上报过") {
+  if (!ts) return never;
+  const s = Math.max(0, now() - ts);
+  if (s < 10) return "刚刚";
+  if (s < 60) return `${Math.round(s)} 秒前`;
+  if (s < 3600) return `${Math.round(s / 60)} 分钟前`;
+  if (s < 86400) return `${Math.round(s / 3600)} 小时前`;
+  return `${dayLabel(ts)} ${clock(ts)}`;
+}
+
+const STATE = {
+  running: "运行中", busy: "运行中", working: "运行中", active: "运行中", idle: "空闲", ok: "正常", online: "在线", ready: "就绪",
+  warn: "告警", warning: "告警", degraded: "降级", blocked: "受阻", paused: "已暂停",
+  error: "出错", failed: "失败", fail: "失败", down: "宕机",
+};
+const LEVEL = { warn: "告警", error: "错误" };
+// 常见的事件类型给个中文名，其它的按 agent 发来的原样显示
+const KIND = {
+  sent: "已发出", reply: "回复", message: "消息", held: "扣下", run: "巡检", run_done: "处理完", task: "任务", task_done: "任务完成",
+  done: "完成", goal_changed: "改目标", goal_error: "目标出错", error: "出错", warn: "告警", warning: "告警", log: "日志", info: "信息",
+  scheduler: "启动", start: "启动", started: "启动", stop: "停止", stopped: "停止", heartbeat: "心跳", check: "自检", capabilities: "能力", report: "汇报",
+};
+const LEVEL_KINDS = ["warn", "warning", "error"];
+const EV_LEVELS = { "": "", attention: "warn,error", error: "error" };
+const TASK_ST = { queued: ["排队中", "info"], running: ["执行中", "on"], done: ["已完成", ""], failed: ["失败", "error"], canceled: ["已取消", ""], expired: ["已过期", ""] };
+const TASK_FINAL = ["done", "failed", "canceled", "expired"];
+function dur(s) {
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return `${s} 秒`;
+  if (s < 3600) return `${Math.round(s / 60)} 分钟`;
+  return `${Math.floor(s / 3600)} 小时${s % 3600 >= 60 ? ` ${Math.round((s % 3600) / 60)} 分` : ""}`;
+}
+
+// group：online / warn / error / offline / revoked
+function health(a) {
+  if (a.revoked) return { cls: "", group: "revoked", label: "已吊销" };
+  if (!a.last_seen || now() - a.last_seen > onlineWindow) return { cls: "", group: "offline", label: "离线" };
+  const raw = String(a.status?.state || ""), st = raw.toLowerCase(), label = STATE[st] || raw || "在线";
+  if (["error", "failed", "fail", "down", "出错"].includes(st)) return { cls: "error", group: "error", label };
+  if (chkBad(a)) return { cls: "error", group: "error", label: "自检没通过" };
+  if (["warn", "warning", "degraded", "blocked", "告警"].includes(st)) return { cls: "warn", group: "warn", label };
+  return { cls: "on", group: "online", label };
+}
+
+/* 每日自检：中控定时派 ami.check 任务，agent 回报每一项的结果，没通过的带原因分类和处理办法 */
+const CHECK_KIND = "ami.check";
+const CHK_KIND = { auth: "登录失效", quota: "余额不足", network: "网络不通", config: "配置问题", other: "出错" };
+const CHK_HINT = { auth: "重新登录或更新凭据（cookie / token / API key），再点「立即自检」确认", quota: "去对应平台充值或提高额度",
+                   network: "检查 agent 所在机器的网络和代理", config: "检查 agent 的配置文件或环境变量" };
+const CHK_ST = { ok: ["正常", "on"], fail: ["没通过", "error"], error: ["没完成", "error"], no_response: ["没响应", "error"], unsupported: ["格式不对", "warn"] };
+const CHK_ST_HINT = { no_response: "确认 agent 在运行，并且在领任务（Python 客户端用 work() 或 serve_checks()）",
+                      error: "看看 agent 那边的日志；处理完再点「立即自检」", unsupported: "让 agent 按接入说明第 5 节回报 {\"checks\": [...]}" };
+const chkBad = a => !a.revoked && !!a.health && !a.health.ok;
+const REPORT_KIND = "ami.report", REPORT_WAIT_MIN = 15;
+const kindName = k => k === CHECK_KIND ? "自检" : k === REPORT_KIND ? "汇报" : k;
+const isOnline = a => !!a.last_seen && now() - a.last_seen <= onlineWindow;
+
+/* 能力：agent 注册自己能处理哪些 kind，按（用户, kind）合在一起，说明取最近更新的那个 agent 的 */
+function capCatalog() {
+  const m = new Map();
+  for (const a of live().sort((x, y) => (y.capabilities_at || 0) - (x.capabilities_at || 0)))
+    for (const c of a.capabilities || []) {
+      const k = `${a.owner_id}|${c.kind}`;
+      if (!m.has(k)) m.set(k, { ...c, owner_id: a.owner_id, owner_name: a.owner_name, providers: [] });
+      m.get(k).providers.push(a);
+    }
+  return [...m.values()].sort((x, y) => (x.owner_id - y.owner_id) || x.kind.localeCompare(y.kind));
+}
+// 派这个能力的任务默认进哪个队列：优先在线的提供者所在的分组
+function capQueue(c) {
+  const p = c.providers.find(isOnline) || c.providers[0];
+  return `${c.owner_id}:${p.group}`;
+}
+// 能领 owner:group 这个队列、又注册了 kind 的 agent（公共池同一个用户的 agent 都能领）
+const capProviders = (q, kind) => { const i = q.indexOf(":"), o = Number(q.slice(0, i)), g = q.slice(i + 1);
+  return live().filter(a => a.owner_id === o && (!g || a.group === g) && (a.capabilities || []).some(c => c.kind === kind)); };
+// 一句话说清没通过的是哪一项、怎么处理
+function chkBrief(h) {
+  const bad = h.checks.filter(c => !c.ok);
+  if (!bad.length) return h.summary;
+  const c = bad[0], fix = c.hint || CHK_HINT[c.kind];
+  return `${c.name}${c.kind !== "other" ? `（${CHK_KIND[c.kind]}）` : ""}${fix ? ` → ${fix}` : c.message ? `：${c.message}` : ""}${bad.length > 1 ? `；另有 ${bad.length - 1} 项没通过` : ""}`;
+}
+const localTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; } };
+function whenNext(ts) {
+  const d = new Date(ts * 1000), days = Math.round((new Date(d.toDateString()) - new Date(new Date().toDateString())) / 86400000);
+  return `${days <= 0 ? "今天" : days === 1 ? "明天" : d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" })} ${clock(ts)}`;
+}
+
+/* ================= 接口 ================= */
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { "Content-Type": "application/json" } });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 401 && path !== "/api/login") { showLogin("登录已过期，请重新登录"); throw new Error(body.error || "unauthorized"); }
+  if (!res.ok) throw new Error(body.error || `请求失败（${res.status}）`);
+  return body;
+}
+
+async function loadAgents() {
+  const t0 = Date.now() / 1000;
+  const r = await api("/api/agents");
+  skew = r.server_time - t0;
+  onlineWindow = r.online_window;
+  checkTz = r.check_tz || "";
+  reportHours = r.report_hours || 4;
+  agents = r.agents;
+}
+
+// 当前页面要看哪一段动态：中控台最近几条、动态页按筛选、agent 工作区（概况里最近几条 / 动态页签完整的）
+function feedSpec() {
+  if (route.page === "overview") return { key: "all", url: "/api/events", limit: 12 };
+  if (route.page === "activity") { const f = ui.ev; return { key: `act|${f.agent}|${f.level}|${f.q.trim()}`, url: "/api/events", limit: 50, paged: true, filter: true }; }
+  if (route.page === "agents" && route.id && (route.tab === "overview" || route.tab === "activity")) {
+    const full = route.tab === "activity";
+    return { key: `agent:${route.id}:${route.tab}`, url: `/api/agents/${route.id}/events`, limit: full ? 50 : 8, paged: full, agent: route.id };
+  }
+  return null;
+}
+const feedKey = () => feedSpec()?.key ?? null;
+const emptyFeed = () => ({ key: null, events: [], hasMore: false, counts: null, loading: false });
+
+async function loadFeed(more = false) {
+  const s = feedSpec();
+  if (!s || (more && (!s.paged || feed.loading || !feed.hasMore || feed.key !== s.key))) return;
+  const p = new URLSearchParams({ limit: s.limit });
+  if (s.paged && !more) p.set("counts", 1);
+  if (more && feed.events.length) p.set("before", Math.min(...feed.events.map(e => e.id)));
+  if (s.filter) {
+    if (ui.ev.agent) p.set("agent", ui.ev.agent);
+    if (ui.ev.level) p.set("level", EV_LEVELS[ui.ev.level]);
+    if (ui.ev.q.trim()) p.set("q", ui.ev.q.trim());
+  }
+  const cur = feed;
+  cur.loading = true;
+  try {
+    const r = await api(`${s.url}?${p}`);
+    if (s.key !== feedKey()) return;
+    feed = { key: s.key, events: more ? feed.events.concat(r.events) : r.events, hasMore: !!s.paged && r.events.length === s.limit,
+             counts: more ? feed.counts : r.counts || null, loading: false };
+    render();
+  } finally { cur.loading = false; }
+}
+
+// SSE 推来的动态是否属于当前页面（和服务端的筛选规则一致）
+function feedWants(agentId, e) {
+  const s = feedSpec();
+  if (!s || feed.key !== s.key) return false;
+  if (s.agent) return agentId === s.agent;
+  if (!s.filter) return true;
+  const f = ui.ev, q = f.q.trim().toLowerCase();
+  if (f.agent && Number(f.agent) !== agentId) return false;
+  if (f.level && !EV_LEVELS[f.level].split(",").includes(e.level)) return false;
+  return !q || String(e.text || "").toLowerCase().includes(q) || String(e.kind).toLowerCase().includes(q);
+}
+
+// 当前页面的任务列表按什么筛：任务页按筛选栏，agent 的任务页签按这个 agent，中控台看进行中的
+function taskFilter() {
+  if (route.page === "tasks" && !route.id) return ui.tk;
+  if (route.page === "agents" && route.id && route.tab === "tasks") return { status: ui.atk, queue: "", agent: String(route.id), q: "" };
+  if (route.page === "overview") return { status: "running,queued", queue: "", agent: "", q: "" };
+  return null;
+}
+function tasksKey() { const f = taskFilter(); return f ? `${route.page}|${tkParams(f)}` : null; }
+// 筛选条件 → 查询参数；队列写成「用户id:分组」，公共池的分组是空串
+function tkParams(f) {
+  const p = new URLSearchParams();
+  if (f.queue) { const i = f.queue.indexOf(":"); p.set("owner", f.queue.slice(0, i)); p.set("group", f.queue.slice(i + 1)); }
+  if (f.agent) p.set("agent", f.agent);
+  if (f.status) p.set("status", f.status);
+  if (f.q.trim()) p.set("q", f.q.trim());
+  return p;
+}
+
+async function loadTasks(more = false) {
+  const key = tasksKey(), f = taskFilter();
+  if (!key || (more && (tasks.loading || !tasks.hasMore || tasks.key !== key))) return;
+  const limit = route.page === "overview" ? 20 : 50, p = tkParams(f);
+  p.set("limit", limit);
+  if (more && tasks.items.length) p.set("before", Math.min(...tasks.items.map(t => t.id)));
+  const cur = tasks;
+  cur.loading = true;
+  try {
+    const r = await api(`/api/tasks?${p}`);
+    if (key !== tasksKey()) return;
+    tasks = { key, items: more ? tasks.items.concat(r.tasks) : r.tasks, hasMore: route.page !== "overview" && r.tasks.length === limit, loading: false };
+    render();
+  } finally { cur.loading = false; }
+}
+
+async function loadTask(id) {
+  try { const r = await api(`/api/tasks/${id}`); if (route.page === "tasks" && route.id === id) { taskDetail = { id, task: r.task }; render(); } }
+  catch (e) { if (route.id === id) { taskDetail = { id, task: false }; render(); } }
+}
+
+// 统计：全局的给导航和中控台用；任务页按选中的队列 / agent，agent 工作区按这个 agent
+function statsScope() {
+  if (route.page === "tasks" && !route.id) { const p = tkParams(ui.tk); p.delete("status"); p.delete("q"); return p.toString(); }
+  return route.page === "agents" && route.id ? `agent=${route.id}` : "";
+}
+async function loadTaskStats() {
+  const sc = statsScope();
+  const [g, s, q] = await Promise.all([api("/api/tasks/stats"), sc ? api(`/api/tasks/stats?${sc}`) : null, api("/api/queues")]);
+  taskStats = g;
+  queues = q.queues;
+  if (sc === statsScope()) scopedStats = { scope: sc, s: s || g };
+  render();
+}
+let statsTimer;
+function refreshTaskStats() { clearTimeout(statsTimer); statsTimer = setTimeout(() => loadTaskStats().catch(() => {}), 400); }
+const scoped = () => scopedStats.scope === statsScope() ? scopedStats.s : null;
+
+async function loadReports() {
+  if (route.page !== "reports") return;
+  const r = await api("/api/reports/latest");
+  reports = { latest: r.reports, rounds: r.rounds, cells: r.cells, every: r.every_hours, next: r.next_round };
+  if (ui.rr && !r.rounds.some(x => x.round === ui.rr)) ui.rr = "";
+  render();
+}
+async function loadRound(key) {
+  if (route.page !== "reports" || !key) return;
+  const r = await api(`/api/reports?round=${encodeURIComponent(key)}&limit=200`);
+  if (ui.rr === key) { roundView = { key, items: r.reports }; render(); }
+}
+let rpTimer;
+function refreshReports() { clearTimeout(rpTimer); rpTimer = setTimeout(() => { loadReports().catch(() => {}); loadRound(ui.rr).catch(() => {}); }, 500); }
+async function loadAgentReports(more = false) {
+  if (route.page !== "agents" || !route.id) return;
+  const id = route.id;
+  if (agentReports.id !== id) agentReports = { id, items: null, hasMore: false, loading: false };
+  if (agentReports.loading || more && !agentReports.hasMore) return;
+  agentReports.loading = true;
+  const before = more && agentReports.items?.length ? `&before=${agentReports.items[agentReports.items.length - 1].id}` : "";
+  try {
+    const r = await api(`/api/reports?agent=${id}&limit=20${before}`);
+    if (agentReports.id !== id) return;
+    agentReports.items = more ? [...(agentReports.items || []), ...r.reports] : r.reports;
+    agentReports.hasMore = r.reports.length === 20;
+  } finally { if (agentReports.id === id) agentReports.loading = false; }
+  render();
+}
+
+async function loadUsers() {
+  if (route.page !== "users" || !me?.is_admin) return;
+  users = (await api("/api/users")).users;
+  render();
+}
+
+// SSE 推来的任务是否属于当前列表（和服务端的筛选规则一致）
+function taskMatches(t, f) {
+  const q = f.q.trim().toLowerCase().replace(/^#/, "");
+  if (f.status && !f.status.split(",").includes(t.status)) return false;
+  if (f.queue && f.queue !== `${t.owner_id}:${t.group}`) return false;
+  if (f.agent && t.from_agent !== Number(f.agent) && t.worker !== Number(f.agent)) return false;
+  return !q || t.kind.toLowerCase().includes(q) || String(t.id) === q || t.dedupe_key === q;
+}
+
+/* ================= 组件 ================= */
+function head(title, desc, action = "") {
+  return `<div class="page-head"><div><h1>${title}</h1>${desc ? `<p>${desc}</p>` : ""}</div>${action ? `<div class="head-actions">${action}</div>` : ""}</div>`;
+}
+const newKeyBtn = (label = "接入新 agent", cls = "primary") => `<button class="btn ${cls}" data-act="new-key">${icon("plus")}${label}</button>`;
+const hue = id => (id * 67) % 360;
+const avatar = (a, size = "") => `<span class="av ${size}" style="--h:${hue(a.id)}">${esc([...a.name][0] || "?")}${a.revoked ? "" : `<i class="dot ${health(a).cls}"></i>`}</span>`;
+const agentHref = (id, tab = "overview") => `#/agents/${id}${tab === "overview" ? "" : `/${tab}`}`;
+
+// 把 agent 上报的任意数据变成「字段：值」，不显示原始数据
+function fv(v, depth = 0) {
+  if (v === null || v === undefined || v === "") return `<span class="muted">—</span>`;
+  if (typeof v === "boolean") return v ? "是" : "否";
+  if (typeof v !== "object") return esc(v);
+  if (Array.isArray(v)) {
+    if (!v.length) return `<span class="muted">无</span>`;
+    if (v.every(x => x === null || typeof x !== "object")) return `<div class="chips">${v.map(x => `<span class="chip">${esc(x)}</span>`).join("")}</div>`;
+    if (depth >= 3) return `<span class="muted">${v.length} 项</span>`;
+    const shown = v.slice(0, 20);
+    return `<div class="sublist">${shown.map(x => `<div class="subitem">${fv(x, depth + 1)}</div>`).join("")}
+      ${v.length > shown.length ? `<span class="muted">还有 ${v.length - shown.length} 项</span>` : ""}</div>`;
+  }
+  const entries = Object.entries(v);
+  if (!entries.length) return `<span class="muted">无</span>`;
+  if (depth >= 3) return `<span class="muted">${entries.length} 个字段</span>`;
+  return `<dl class="fields">${entries.map(([k, x]) => `<dt>${esc(k)}</dt><dd>${fv(x, depth + 1)}</dd>`).join("")}</dl>`;
+}
+
+function keyBox(a) {
+  if (a.revoked) return `<div class="secret off"><span>已吊销，不能再使用</span></div>`;
+  if (!a.api_key) return `<div class="secret off"><span>这个 key 没有保存原文，换一次 key 后就能在这里查看</span></div>`;
+  const shown = revealed.has(a.id);
+  return `<div class="secret${shown ? " revealed" : ""}"><span>${esc(shown ? a.api_key : a.key_prefix + "••••••••••••••••")}</span>
+    <button class="icon-btn sm" data-act="toggle-key" data-id="${a.id}" title="${shown ? "隐藏" : "显示"}" aria-label="${shown ? "隐藏" : "显示"}">${icon(shown ? "eyeOff" : "eye", 15)}</button>
+    <button class="icon-btn sm" data-act="copy-key" data-id="${a.id}" title="复制 key" aria-label="复制 key">${icon("copy", 15)}</button></div>`;
+}
+
+const openText = new Set();
+function evTime(ts) {
+  const s = now() - ts;
+  return s >= 0 && s < 3600 ? ago(ts) : clock(ts);
+}
+
+function timeline(withAgent, empty = "还没有动态。agent 发出事件后会实时出现在这里。") {
+  if (feed.key === null) return `<p class="empty">加载中…</p>`;
+  if (!feed.events.length) return `<p class="empty">${empty}</p>`;
+  // 按发生时间排（agent 可以带自己的时间戳），这样按天分组不会断开
+  const evs = feed.events.slice().sort((x, y) => y.ts - x.ts || y.id - x.id);
+  const days = new Map();
+  for (const e of evs) { const d = dayLabel(e.ts); days.set(d, (days.get(d) || 0) + 1); }
+  let out = `<div class="feed">`, day = null;
+  for (const e of evs) {
+    const d = dayLabel(e.ts);
+    if (d !== day) { out += `${day ? "</ul>" : ""}<div class="day">${d}<small>${days.get(d)} 条</small></div><ul class="timeline">`; day = d; }
+    const a = byId(e.agent_id), lv = LEVEL[e.level], lvc = lv ? e.level : "";
+    const hasData = e.data != null && typeof e.data === "object" && Object.keys(e.data).length;
+    const text = String(e.text || ""), long = text.length > 220 || text.split("\n").length > 4, opened = openText.has(e.id);
+    const ic = withAgent && a
+      ? `<a class="ev-ic av" href="${agentHref(a.id)}" title="${esc(a.name)}" style="--h:${hue(a.id)}">${esc([...a.name][0] || "?")}</a>`
+      : `<span class="ev-ic ${lvc}">${icon(e.level === "error" ? "x" : e.level === "warn" ? "alert" : "activity", 15)}</span>`;
+    out += `<li class="ev ${lvc}${Date.now() - (fresh.get(e.id) || 0) < 2500 ? " fresh" : ""}" data-eid="${e.id}">${ic}<div>
+      <div class="meta">${withAgent && a ? `<a class="who" href="${agentHref(a.id)}">${esc(a.name)}</a>` : ""}
+        ${lv && LEVEL_KINDS.includes(e.kind) ? "" : `<span class="tag">${esc(KIND[e.kind] || e.kind)}</span>`}${lv ? `<span class="tag ${e.level}">${lv}</span>` : ""}</div>
+      ${text ? `<div class="text${long && !opened ? " clamp" : ""}">${esc(text)}</div>
+        ${long ? `<button class="text-more" data-act="text-more" data-id="${e.id}">${opened ? "收起" : "展开全文"}</button>` : ""}` : ""}
+      ${hasData ? `<details class="more-info" data-k="ev${e.id}"><summary>详情</summary><div class="box">${fv(e.data)}</div></details>`
+        : e.data != null && typeof e.data !== "object" ? `<div class="muted">${esc(e.data)}</div>` : ""}
+      </div><time title="${esc(new Date(e.ts * 1000).toLocaleString("zh-CN"))}">${esc(evTime(e.ts))}</time></li>`;
+  }
+  out += "</ul></div>";
+  if (!feedSpec()?.paged) return out;
+  if (feed.hasMore) return out + `<div class="more"><button class="btn sm" data-act="more" id="more">${feed.loading ? "加载中…" : "加载更早的"}</button></div>`;
+  return out + (evs.length > 10 ? `<div class="feed-end">没有更早的动态了</div>` : "");
+}
+
+function emptyState(ic, title, text, action = "") {
+  return `<div class="card empty-state"><div class="ic">${icon(ic, 22)}</div><h3>${title}</h3><p>${text}</p>${action ? `<div class="head-actions">${action}</div>` : ""}</div>`;
+}
+
+// 出错的排前面，然后是告警、在线、离线
+function byAttention(x, y) {
+  const rank = { error: 0, warn: 1, online: 2, offline: 3, revoked: 4 };
+  return (rank[health(x).group] - rank[health(y).group]) || ((y.last_seen || 0) - (x.last_seen || 0));
+}
+
+// 管理员看到不止一个人的数据时，才在各处标出属于谁
+const showOwners = () => !!me?.is_admin && new Set([...agents.map(a => a.owner_id), ...queues.map(q => q.owner_id)]).size > 1;
+const grpTag = g => g ? `<span class="grp">${esc(g)}</span>` : "";
+const queueName = (ownerName, g) => (showOwners() ? `${ownerName} · ` : "") + (g || "公共池");
+const who = (id, name) => id == null ? "控制台" : byId(id)?.name || name || `#${id}`;
+
+/* ================= 左侧：agent 花名册 ================= */
+function agentSub(a) {
+  if (a.revoked) return "已吊销";
+  if (chkBad(a)) return `自检：${chkBrief(a.health)}`;
+  const h = health(a);
+  if (h.group === "offline") return a.last_seen ? `离线 · ${ago(a.last_seen)}` : "等待第一次上报";
+  return a.status?.summary || h.label;
+}
+function rosterItem(a) {
+  const h = health(a), on = route.page === "agents" && route.id === a.id;
+  return `<a class="ag ${h.group === "error" ? "error" : h.group === "warn" ? "warn" : ""}${on ? " on" : ""}${a.revoked ? " revoked" : ""}" href="${agentHref(a.id)}" title="${esc(a.name)}">
+    ${avatar(a)}<span class="txt"><span class="nm">${esc(a.name)}</span><span class="sub">${esc(agentSub(a))}</span></span>
+    ${h.group === "error" ? `<span class="flag">${icon("alert", 14)}</span>` : ""}</a>`;
+}
+function renderRoster() {
+  const ls = live();
+  if (!agents.length) {
+    $("roster").innerHTML = `<div class="r-empty">还没有 agent。<br>点下面的「接入 agent」创建第一个。</div>`;
+    return;
+  }
+  const sec = (k, title, items, cls = "", n = items.length) => `<div class="r-sec ${cls}${ui.closed.has(k) ? " closed" : ""}">
+      <button class="r-h" data-act="r-toggle" data-k="${esc(k)}">${icon("chevron", 12)}${title}<span class="n">${n}</span></button>
+      <div class="r-list">${items.map(rosterItem).join("")}</div></div>`;
+  let out = "";
+  const attn = ls.filter(a => ["error", "warn"].includes(health(a).group)).sort(byAttention);
+  if (attn.length) out += sec("attn", "需要处理", attn, "attn");
+  // 按队列分：同一个用户、同一个分组的放一起；公共池（不分组的）放最后
+  const groups = new Map();
+  for (const a of ls) { const k = `${a.owner_id}:${a.group}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(a); }
+  const keys = [...groups.keys()].sort((x, y) => {
+    const [ox, gx] = [Number(x.split(":")[0]), x.slice(x.indexOf(":") + 1)], [oy, gy] = [Number(y.split(":")[0]), y.slice(y.indexOf(":") + 1)];
+    return (ox === me?.id ? -1 : 0) - (oy === me?.id ? -1 : 0) || ox - oy || (gx === "") - (gy === "") || gx.localeCompare(gy);
+  });
+  for (const k of keys) {
+    const items = groups.get(k).sort(byAttention), g = k.slice(k.indexOf(":") + 1), on = items.filter(isOnline).length;
+    const owner = showOwners() ? `<span class="owner">${esc(items[0].owner_name)}</span>` : "";
+    out += sec(k, `${g ? grpTag(g) : "未分组"}${owner}`, items, "", `${on}/${items.length} 在线`);
+  }
+  const dead = agents.filter(a => a.revoked);
+  if (dead.length) out += sec("revoked", "已吊销", dead);
+  $("roster").innerHTML = out;
+}
+
+/* ================= 顶栏 ================= */
+const NAV = [["overview", "中控台", "overview"], ["tasks", "任务", "tasks"], ["reports", "汇报", "report"], ["caps", "能力", "caps"], ["activity", "动态", "activity"]];
+function renderTop() {
+  const busy = taskStats ? taskStats.queued + taskStats.running : 0, caps = capCatalog().length;
+  $("topnav").innerHTML = NAV.map(([p, l, ic]) => `<a href="#/${p}" class="${route.page === p ? "on" : ""}">${icon(ic, 15)}<span>${l}</span>
+    ${p === "tasks" && busy ? `<span class="n" title="排队中 + 执行中">${busy}</span>` : ""}${p === "caps" && caps ? `<span class="n">${caps}</span>` : ""}</a>`).join("");
+  $("shell").classList.toggle("nav-open", ui.navOpen);
+}
+
+/* ================= 页面：中控台 ================= */
+function pageOverview() {
+  const ls = live();
+  if (!ls.length) return head("中控台", "所有 agent 的运行情况、任务和动态") + `<div class="card empty-state"><div class="ic">${icon("agents", 22)}</div>
+    <h3>接入你的第一个 agent</h3><p>AMI 是你的 agent 中控：agent 用 API key 把状态、动态推上来，你在这里集中看、按能力派任务、每天自动自检。</p>
+    <div class="head-actions">${newKeyBtn()}<a class="btn" href="#/guide">${icon("guide")}看接入指南</a></div>
+    <div class="onboard" style="margin-top:28px">
+      <div><b><i>1</i>创建 key</b><p class="muted">给 agent 起个名字，需要的话填个分组（同组共享任务队列）。</p></div>
+      <div><b><i>2</i>发接入说明</b><p class="muted">复制接入说明发给 agent，里面有地址、key 和所有接口。</p></div>
+      <div><b><i>3</i>开始调度</b><p class="muted">它上报后出现在左侧列表，注册的能力可以直接派任务。</p></div></div></div>`;
+  const online = ls.filter(isOnline).length, c = taskStats;
+  const attn = ls.filter(a => ["error", "warn"].includes(health(a).group)).sort(byAttention);
+  const attnRow = a => {
+    const h = health(a), bad = chkBad(a);
+    return `<a class="attn-row" href="${agentHref(a.id, bad ? "check" : "overview")}">${avatar(a)}<div style="min-width:0">
+      <div class="t">${esc(a.name)}${grpTag(a.group)}<span class="pill ${h.cls}">${esc(h.label)}</span></div>
+      <p>${esc(bad ? chkBrief(a.health) : a.status?.summary || "状态异常")}</p></div>${icon("chevron", 15)}</a>`;
+  };
+  const failedRow = c?.failed ? `<a class="attn-row" href="#/tasks" data-tk-status="failed"><span class="ev-ic error">${icon("x", 15)}</span><div style="min-width:0">
+      <div class="t">24 小时内 ${c.failed} 个任务失败</div><p>看看失败原因，可以重新派发</p></div>${icon("chevron", 15)}</a>` : "";
+  const kpi = (label, val, cls, attrs) => `<a class="stat ${val ? cls : ""}" href="#/tasks" ${attrs}><span>${label}</span><b>${c ? val : "–"}</b></a>`;
+  const running = tasks.key === tasksKey() ? tasks.items.slice(0, 8) : null;
+  return head("中控台", `${ls.length} 个 agent · ${online} 个在线 · 实时更新`, newKeyBtn("接入 agent", "")) + `<div class="stack">
+    ${attn.length || failedRow ? `<section class="card attn"><div class="section-title"><h2>${icon("alert", 16)}需要处理</h2></div>
+      <div class="attn-list">${attn.map(attnRow).join("")}${failedRow}</div>
+      ${attn.some(chkBad) && !me?.notify_url ? `<p class="attn-foot">还没设置通知，自检出问题时只能在这里看到 · <a href="#" data-act="notify">设置通知</a></p>` : ""}</section>` : ""}
+    <div class="stats">
+      <div class="stat ${online ? "ok" : ""}"><span>在线 agent</span><b>${online}<small style="font-size:14px;font-weight:500"> / ${ls.length}</small></b></div>
+      ${kpi("执行中", c?.running, "run", 'data-tk-status="running"')}
+      ${kpi("排队中", c?.queued, "info", 'data-tk-status="queued"')}
+      ${kpi("24 小时完成", c?.done, "", 'data-tk-status="done"')}
+      ${kpi("24 小时失败", c?.failed, "error", 'data-tk-status="failed"')}
+    </div>
+    <div class="ov-grid">
+      <div class="stack">
+        <section><div class="section-title"><h2>队列</h2><span class="hint">同组的 agent 共享一个队列，公共池的任务每个 agent 都能领</span></div>
+          <div class="lanes">${laneCards()}</div></section>
+        <section class="card"><div class="section-title"><h2>进行中的任务</h2><a href="#/tasks" data-tk-status="">全部任务 ${icon("arrow", 13)}</a></div>
+          ${running === null ? `<p class="empty">加载中…</p>` : running.length ? `<div class="task-list">${running.map(taskRow).join("")}</div>`
+            : `<p class="empty">现在没有排队或执行中的任务。</p>`}</section>
+      </div>
+      <section class="card"><div class="section-title"><h2>实时动态</h2><a href="#/activity" data-ev-agent="">全部动态 ${icon("arrow", 13)}</a></div>${timeline(true)}</section>
+    </div></div>`;
+}
+// 每个队列一张卡：谁在这个队列、能做什么、排队和执行中的任务数
+function laneCards() {
+  let qs = queues.slice();
+  for (const a of live()) if (!qs.some(q => q.owner_id === a.owner_id && q.group === a.group))
+    qs.push({ owner_id: a.owner_id, owner_name: a.owner_name, group: a.group, agents: 0, online: 0, queued: 0, running: 0 });
+  qs.sort((x, y) => x.owner_id - y.owner_id || (x.group === "") - (y.group === "") || x.group.localeCompare(y.group));
+  return qs.map(q => {
+    const k = `${q.owner_id}:${q.group}`, ags = live().filter(a => a.owner_id === q.owner_id && a.group === q.group).sort(byAttention);
+    const kinds = [...new Set(ags.flatMap(a => (a.capabilities || []).map(c => c.kind)))];
+    return `<div class="card lane">
+      <div class="lane-h">${q.group ? grpTag(q.group) : "<b>公共池</b>"}${showOwners() ? `<span class="owner">${esc(q.owner_name)}</span>` : ""}
+        <span class="lane-n"><b class="${q.queued ? "q" : ""}">${q.queued}</b> 排队 · <b class="${q.running ? "r" : ""}">${q.running}</b> 执行中</span></div>
+      ${ags.length ? `<div class="lane-ags">${ags.slice(0, 5).map(a => `<a class="lane-ag" href="${agentHref(a.id)}">${avatar(a, "sm")}<span>${esc(a.name)}</span><span class="st">${esc(health(a).label)}</span></a>`).join("")}
+        ${ags.length > 5 ? `<span class="muted" style="font-size:12px;padding:2px 6px">还有 ${ags.length - 5} 个</span>` : ""}</div>`
+        : `<p class="empty sm">${q.group ? "这个分组现在没有 agent" : "没有未分组的 agent；公共池的任务所有 agent 都能领"}</p>`}
+      ${kinds.length ? `<div class="chips">${kinds.slice(0, 6).map(x => `<span class="chip mono">${esc(x)}</span>`).join("")}${kinds.length > 6 ? `<span class="chip">+${kinds.length - 6}</span>` : ""}</div>` : ""}
+      <div class="lane-f"><a href="#/tasks" data-tk-queue="${esc(k)}">查看任务 ${icon("arrow", 12)}</a>
+        <button class="btn sm" data-act="new-task" data-q="${esc(k)}">${icon("send", 13)}派任务</button></div></div>`;
+  }).join("");
+}
+
+/* ================= 页面：agent 工作区 ================= */
+const AG_TABS = [["overview", "概况"], ["activity", "动态"], ["tasks", "任务"], ["caps", "能力"], ["reports", "汇报"], ["check", "自检"], ["settings", "设置"]];
+function pageAgent() {
+  const a = byId(route.id);
+  if (!a) return emptyState("agents", "没有这个 agent", "它可能已经不存在了。", `<a class="btn" href="#/overview">回中控台</a>`);
+  const h = health(a), tab = AG_TABS.some(([k]) => k === route.tab) ? route.tab : "overview", st = scoped();
+  const badge = {
+    tasks: st && st.queued + st.running ? `<span class="n run">${st.queued + st.running}</span>` : "",
+    caps: a.capabilities?.length ? `<span class="n">${a.capabilities.length}</span>` : "",
+    check: chkBad(a) ? `<span class="n err">!</span>` : "",
+  };
+  const body = { overview: agentOverview, activity: agentActivity, tasks: agentTasks, caps: agentCaps, reports: agentReportsTab, check: checkCard, settings: agentSettings }[tab](a);
+  return `<div class="ws-head">${avatar(a, "lg")}
+      <div class="ws-title"><div class="title-row"><h1>${esc(a.name)}</h1>${grpTag(a.group)}<span class="pill ${h.cls}">${h.cls ? `<span class="dot ${h.cls}"></span>` : ""}${esc(h.label)}</span></div>
+        ${a.status?.summary ? `<p>${esc(a.status.summary)}</p>` : ""}
+        <div class="meta-row">最近上报 ${esc(ago(a.last_seen))} · 接入于 ${esc(date(a.created_at))}${showOwners() ? ` · 属于 ${esc(a.owner_name)}` : ""}</div></div>
+      ${a.revoked ? "" : `<div class="head-actions">
+        ${a.api_key ? `<button class="btn" data-act="copy-guide" data-id="${a.id}">${icon("copy")}复制接入说明</button>` : ""}
+        <button class="btn primary" data-act="new-task" data-q="${esc(`${a.owner_id}:${a.group}`)}">${icon("send")}派任务</button></div>`}
+    </div>
+    <nav class="ws-tabs">${AG_TABS.map(([k, l]) => `<a href="${agentHref(a.id, k)}" class="${k === tab ? "on" : ""}">${l}${badge[k] || ""}</a>`).join("")}</nav>
+    ${body}`;
+}
+function statusCard(a) {
+  const st = a.status || {}, rest = Object.fromEntries(Object.entries(st).filter(([k]) => k !== "state" && k !== "summary"));
+  return `<section class="card"><div class="section-title"><h2>当前状态</h2>${a.status ? `<span class="hint">${esc(ago(a.last_seen))}更新</span>` : ""}</div>
+    ${a.status ? `${st.summary ? `<p class="summary-big">${esc(st.summary)}</p>` : ""}
+      ${Object.keys(rest).length ? fv(rest) : st.summary ? "" : `<p class="empty">上报了状态，但没有具体内容</p>`}`
+    : `<p class="empty">还没上报过状态。把接入说明发给它，开始上报后这里会显示它正在做什么。</p>`}</section>`;
+}
+// 四格任务统计，点一格切到 agent 的任务页签并按状态筛选
+function taskMini(c, a) {
+  return `<div class="mini-stats">${[["queued", "排队中", "info"], ["running", "执行中", "run"], ["done", "24h 完成", ""], ["failed", "24h 失败", "error"]].map(([k, l, cls]) =>
+    `<a href="${agentHref(a.id, "tasks")}" class="${c && c[k] ? cls : ""}" data-atk="${k}"><b>${c ? c[k] : "–"}</b><span>${l}</span></a>`).join("")}</div>`;
+}
+const queueLine = a => a.group ? `领「${esc(a.group)}」队列和公共池的任务；它提交的任务进「${esc(a.group)}」队列。` : "不分组：只领公共池的任务，它提交的任务也进公共池。";
+function agentOverview(a) {
+  const caps = a.capabilities || [], hh = a.health;
+  const chk = hh ? (() => { const [label, cls] = CHK_ST[hh.status] || [hh.status, ""];
+      return `<div class="chk-sum"><span class="pill ${cls}">${label}</span><span class="muted" style="font-size:12.5px">${esc(ago(hh.ts))}</span><p>${esc(hh.ok ? hh.summary : chkBrief(hh))}</p></div>`; })()
+    : `<p class="empty sm">${a.check_task ? "正在做第一次自检…" : a.checks ? `声明了 ${a.checks.length} 项检查，还没做过自检。` : "还没开启每日自检。"}</p>`;
+  return `<div class="ws-grid">
+    <div class="stack">
+      ${statusCard(a)}
+      <section class="card"><div class="section-title"><h2>任务</h2><a href="${agentHref(a.id, "tasks")}" data-atk="">查看任务 ${icon("arrow", 13)}</a></div>
+        <p class="muted" style="margin:-4px 0 12px;font-size:13px">${queueLine(a)}</p>${taskMini(scoped(), a)}</section>
+      <section class="card"><div class="section-title"><h2>能力</h2>${caps.length ? `<a href="${agentHref(a.id, "caps")}">详情 ${icon("arrow", 13)}</a>` : ""}</div>${capMini(a)}</section>
+    </div>
+    <div class="stack">
+      <section class="card"><div class="section-title"><h2>最近汇报</h2><a href="${agentHref(a.id, "reports")}">${a.report_off ? "已关闭" : `每 ${reportHours} 小时`} ${icon("arrow", 13)}</a></div>${reportMini(a)}</section>
+      <section class="card"><div class="section-title"><h2>每日自检</h2><a href="${agentHref(a.id, "check")}">${a.check_at ? `每天 ${esc(a.check_at)}` : "设置"} ${icon("arrow", 13)}</a></div>${chk}</section>
+      <section class="card"><div class="section-title"><h2>最近动态</h2><a href="${agentHref(a.id, "activity")}">全部 ${icon("arrow", 13)}</a></div>
+        ${timeline(false, "还没有动态。它发出事件后会实时出现在这里。")}</section>
+    </div></div>`;
+}
+function agentActivity(a) {
+  return `<section class="card"><div class="section-title"><h2>动态${feed.counts ? `<small>24 小时 ${feed.counts.total} 条</small>` : ""}</h2>
+      <a href="#/activity" data-ev-agent="${a.id}">在动态页筛选 ${icon("arrow", 13)}</a></div>${timeline(false, "还没有动态。它发出事件后会实时出现在这里。")}</section>`;
+}
+function agentTasks(a) {
+  const c = scoped();
+  const stat = (k, label, cls) => `<button class="stat ${c && c[k] ? cls : ""}${ui.atk === k ? " on" : ""}" data-act="atk" data-s="${k}"><span>${label}</span><b>${c ? c[k] : "–"}</b></button>`;
+  const list = tasks.key !== tasksKey() ? `<p class="empty">加载中…</p>`
+    : tasks.items.length ? `<div class="task-list">${tasks.items.map(taskRow).join("")}</div>` +
+      (tasks.hasMore ? `<div class="more"><button class="btn sm" data-act="tk-more" id="tk-more">${tasks.loading ? "加载中…" : "加载更早的"}</button></div>` : "")
+    : `<p class="empty">${ui.atk ? "没有这个状态的任务" : "它还没有发出或领过任务。"}</p>`;
+  return `<div class="stack">
+    <div class="stats">${stat("queued", "排队中", "info")}${stat("running", "执行中", "run")}${stat("done", "24 小时完成", "")}${stat("failed", "24 小时失败", "error")}</div>
+    <section class="card"><div class="section-title"><h2>它发出或领过的任务${ui.atk ? `<small>· ${TASK_ST[ui.atk][0]}</small>` : ""}</h2>
+      ${ui.atk ? `<button class="btn ghost sm" data-act="atk" data-s="${ui.atk}">${icon("x", 13)}清除筛选</button>` : ""}</div>
+      <p class="muted" style="margin:-4px 0 8px;font-size:13px">${queueLine(a)}</p>${list}</section></div>`;
+}
+function agentCaps(a) {
+  const caps = a.capabilities || [];
+  if (!caps.length) return emptyState("caps", "它还没注册能力",
+    "按接入说明第 6 节把它能处理的任务类型（kind）连同说明、输入输出注册上来，大家就知道能派什么任务给它、payload 怎么写。",
+    a.api_key && !a.revoked ? `<button class="btn" data-act="copy-guide" data-id="${a.id}">${icon("copy")}复制接入说明</button>` : "");
+  const cat = capCatalog();
+  return `<div class="cap-list">${caps.map(c => capItem({ ...c, owner_id: a.owner_id, owner_name: a.owner_name,
+    providers: cat.find(x => x.owner_id === a.owner_id && x.kind === c.kind)?.providers || [a] }, `${a.owner_id}:${a.group}`)).join("")}</div>`;
+}
+function agentSettings(a) {
+  const info = { "名字": esc(a.name), "分组": a.group ? grpTag(a.group) + ` <span class="muted">（创建后不能改）</span>` : "不分组", ...(showOwners() ? { "属于": esc(a.owner_name) } : {}),
+                 "接入于": esc(date(a.created_at)), "最近上报": esc(ago(a.last_seen)), "Key 前缀": `<code>${esc(a.key_prefix)}</code>` };
+  return `<div class="stack" style="max-width:760px">
+    <section class="card"><div class="section-title"><h2>基本信息</h2>${a.revoked ? "" : `<button class="btn sm" data-act="rename" data-id="${a.id}">${icon("edit", 14)}改名</button>`}</div>
+      <dl class="fields">${Object.entries(info).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl></section>
+    <section class="card"><div class="section-title"><h2>API key</h2></div>${keyBox(a)}
+      ${a.revoked ? "" : `<div class="kv-actions">${a.api_key ? `<button class="btn sm" data-act="copy-guide" data-id="${a.id}">${icon("copy", 14)}复制接入说明</button>` : ""}
+        <button class="btn sm" data-act="rotate" data-id="${a.id}">${icon("rotate", 14)}换 key</button></div>
+        <p class="muted" style="margin:10px 0 0;font-size:12.5px">接入说明里包含地址、key 和全部接口，发给 agent 或负责它的同事就行。换 key 后旧 key 立刻失效。</p>`}</section>
+    ${a.revoked ? "" : `<section class="card danger-zone"><div class="row"><div><b>吊销这个 agent</b><p>key 立刻失效且不能恢复，历史状态和动态会保留。</p></div>
+      <button class="btn danger" data-act="revoke" data-id="${a.id}">${icon("ban")}吊销</button></div></section>`}
+  </div>`;
+}
+
+function checkCard(a) {
+  const h = a.health, on = !!a.check_at, running = !!a.check_task;
+  const sched = a.revoked ? "" : `<div class="sched">
+      <label class="check"><input type="checkbox" id="chk-on" data-id="${a.id}"${on ? " checked" : ""}>每天</label>
+      <input type="time" id="chk-at" data-id="${a.id}" value="${esc(a.check_at || "09:00")}" aria-label="自检时间"${on ? "" : " disabled"}>
+      <span class="muted">${esc(checkTz)} 时间${on && a.next_check ? ` · 下次 ${esc(whenNext(a.next_check))}${localTz() !== checkTz ? "（你这里的时间）" : ""}` : on ? "" : " · 已关闭"}</span>
+      <button class="btn sm" data-act="check-now" data-id="${a.id}"${running ? " disabled" : ""}>${icon("shield", 14)}${running ? "自检中…" : "立即自检"}</button></div>`;
+  const item = c => `<li class="chk${c.ok ? "" : " bad"}">${icon(c.ok ? "check" : "x", 14)}<div>
+      <div class="nm">${esc(c.name)}${c.ok ? "" : `<span class="tag error">${CHK_KIND[c.kind] || c.kind}</span>`}</div>
+      ${c.message ? `<div class="msg">${esc(c.message)}</div>` : ""}
+      ${c.ok ? "" : c.hint || CHK_HINT[c.kind] ? `<div class="fix">${esc(c.hint || CHK_HINT[c.kind])}</div>` : ""}</div>
+      <time>${c.ms ? (c.ms < 1000 ? `${c.ms} ms` : `${(c.ms / 1000).toFixed(1)} s`) : ""}</time></li>`;
+  let body;
+  if (!h) {
+    body = running ? `<p class="empty">正在做第一次自检，等 agent 回报…</p>`
+      : a.checks ? `<p class="empty">声明了 ${a.checks.length} 项检查：${esc(a.checks.join("、"))}，还没做过自检。</p>`
+      : `<p class="empty">它还没声明检查项。让它按接入说明第 5 节注册检查（比如登录状态、API key 余额），中控会每天定时派自检任务，没通过时在这里告警并推送通知。${on ? "" : "也可以直接打开每天自检，只确认它还能响应。"}</p>`;
+  } else {
+    const [label, cls] = CHK_ST[h.status] || [h.status, ""];
+    body = `<div class="chk-head"><span class="pill ${cls}">${label}</span><span title="${esc(new Date(h.ts * 1000).toLocaleString("zh-CN"))}">${esc(ago(h.ts))}</span>
+        <a href="#/tasks/${h.task_id}">任务 #${h.task_id}</a>${running ? `<span>· 新的一次正在进行</span>` : ""}</div>
+      ${h.checks.length ? `<ul class="chk-list">${h.checks.map(item).join("")}</ul>`
+        : h.ok ? `<p class="empty">${esc(h.summary)}</p>`
+        : `<div class="err-box">${esc(h.summary)}</div>${CHK_ST_HINT[h.status] ? `<p class="chk-fix">${esc(CHK_ST_HINT[h.status])}</p>` : ""}`}`;
+  }
+  return `<section class="card" style="max-width:860px"><div class="section-title"><h2>每日自检</h2>${a.checks?.length ? `<span class="hint">${a.checks.length} 项检查</span>` : ""}</div>${sched}${body}
+    ${me?.notify_url ? "" : `<p class="attn-foot">没通过时会在中控台提醒；<a href="#" data-act="notify">设置通知</a>后还会推送到你的群。</p>`}</section>`;
+}
+
+/* ================= 定时汇报 ================= */
+const RP_ST = { pending: ["等待回报", "info"], ok: ["已汇报", "on"], no_response: ["没回报", "error"], error: ["汇报出错", "error"],
+                unsupported: ["格式不对", "warn"], offline: ["离线", ""] };
+const RP_ST_HINT = { no_response: "确认它在运行、在领任务，并且能处理 ami.report（Python 客户端用 work() 或 serve_hub() 会自动处理）",
+                     error: "看看 agent 那边的日志", unsupported: "让它按接入说明第 7 节回报一个 JSON 对象", offline: "这一轮开始时它不在线，没有派汇报任务" };
+const RP_KNOWN = ["summary", "state", "done", "doing", "issues", "metrics"];
+const rpBad = r => ["no_response", "error", "unsupported"].includes(r.status);
+const rpState = r => String(r.report?.state || "").toLowerCase();
+const rpAttn = r => r.status === "ok" && (!!r.report?.issues?.length || ["warn", "warning", "degraded", "blocked", "error", "failed", "fail", "down"].includes(rpState(r)));
+// 汇报轮次是中控时区的「YYYY-MM-DD HH:MM」
+function tzDay(back = 0) {
+  try { return new Intl.DateTimeFormat("en-CA", { timeZone: checkTz || undefined }).format(new Date((now() - back * 86400) * 1000)); } catch { return ""; }
+}
+function roundLabel(k) {
+  if (!k) return "手动请求";
+  const [d, t] = k.split(" ");
+  return `${d === tzDay() ? "今天" : d === tzDay(1) ? "昨天" : `${Number(d.slice(5, 7))}月${Number(d.slice(8))}日`} ${t}`;
+}
+const rpHours = () => { const n = 24 / reportHours; return n <= 8 ? `${Array.from({ length: n }, (_, i) => i * reportHours).join(" / ")} 点` : "从 0 点起每个整点"; };
+function reportCard(r, withAgent = true) {
+  const a = byId(r.agent_id), rp = r.report || {}, [label, cls] = RP_ST[r.status] || [r.status, ""], st = rpState(r);
+  const stCls = ["error", "failed", "fail", "down"].includes(st) ? "error" : ["warn", "warning", "degraded", "blocked"].includes(st) ? "warn" : "on";
+  const who = withAgent ? (a ? `${avatar(a, "sm")}<a class="nm" href="${agentHref(a.id, "reports")}">${esc(a.name)}</a>${grpTag(a.group)}` : `<span class="nm">${esc(r.agent_name)}</span>`)
+    : `<span class="nm" style="font-weight:550">${esc(roundLabel(r.round))}</span>`;
+  const pill = r.status === "ok" ? (rp.state ? `<span class="pill ${stCls}">${esc(STATE[st] || rp.state)}</span>` : "")
+    : `<span class="pill ${cls}">${r.status === "pending" ? '<span class="dot run"></span>' : ""}${label}</span>`;
+  const head = `<div class="rp-h">${who}${pill}<time title="${esc(new Date(r.ts * 1000).toLocaleString("zh-CN"))}">${esc(ago(r.ts))}</time></div>`;
+  let body;
+  if (r.status === "ok") {
+    const list = (k, title, ic, c = "") => Array.isArray(rp[k]) && rp[k].length ? `<div class="rp-sec ${c}"><h4>${icon(ic, 13)}${title}</h4>
+      <ul>${rp[k].slice(0, 30).map(x => `<li>${x !== null && typeof x === "object" ? fv(x, 1) : esc(x)}</li>`).join("")}</ul></div>` : "";
+    const metrics = rp.metrics && typeof rp.metrics === "object" && !Array.isArray(rp.metrics) ? Object.entries(rp.metrics) : [];
+    const extra = Object.fromEntries(Object.entries(rp).filter(([k]) => !RP_KNOWN.includes(k) || k === "metrics" && !metrics.length && rp.metrics != null));
+    body = `${rp.summary ? `<p class="rp-sum">${esc(rp.summary)}</p>` : ""}
+      ${metrics.length ? `<div class="rp-metrics">${metrics.slice(0, 24).map(([k, v]) => `<div><b>${typeof v === "number" ? v.toLocaleString("zh-CN")
+        : esc(v !== null && typeof v === "object" ? JSON.stringify(v) : v)}</b><span>${esc(k)}</span></div>`).join("")}</div>` : ""}
+      ${list("issues", "问题 / 需要处理", "alert", "issues")}${list("done", "做完的", "check")}${list("doing", "在做 / 接下来", "activity")}
+      ${Object.keys(extra).length ? `<details class="more-info" data-k="rp${r.id}"><summary>其它字段</summary><div class="box">${fv(extra)}</div></details>` : ""}
+      ${!rp.summary && !metrics.length && !Object.keys(extra).length && !rp.issues && !rp.done && !rp.doing ? `<p class="empty sm">汇报了，但没有内容</p>` : ""}`;
+  } else if (r.status === "pending") {
+    body = `<p class="empty sm">已经请它汇报，等它回报…</p>`;
+  } else {
+    const last = r.last, hint = RP_ST_HINT[r.status];
+    body = `${r.error ? `<div class="err-box${r.status === "unsupported" ? " warn" : ""}">${esc(r.error)}</div>` : ""}
+      ${hint ? `<p class="${r.status === "offline" ? "rp-last" : "chk-fix"}" style="margin:0">${esc(hint)}</p>` : ""}
+      ${last?.status?.summary ? `<p class="rp-last">它最近一次上报的状态（${esc(ago(last.last_seen))}）：${esc(last.status.summary)}</p>` : ""}`;
+  }
+  return `<section class="card rp${rpAttn(r) ? " attn" : rpBad(r) ? " bad" : ""}">${head}${body}</section>`;
+}
+// 先看提到问题的，再看没回报的，然后是正常的、离线的
+function byReport(x, y) {
+  const rank = r => rpAttn(r) ? 0 : rpBad(r) ? 1 : r.status === "pending" ? 2 : r.status === "ok" ? 3 : 4;
+  return rank(x) - rank(y) || String(x.agent_name).localeCompare(String(y.agent_name), "zh-CN");
+}
+// 最近几轮 × 每个 agent 的格子：一眼看出谁按时汇报了、谁提到了问题、谁没回
+function roundMatrix() {
+  const cols = reports.rounds.slice(0, 12).reverse();
+  if (!cols.length) return "";
+  const cell = new Map(reports.cells.map(c => [`${c.agent_id}|${c.round}`, c]));
+  const ids = [...new Set([...live().map(a => a.id), ...reports.cells.map(c => c.agent_id)])].filter(id => byId(id));
+  const ags = ids.map(byId).sort((x, y) => x.name.localeCompare(y.name, "zh-CN"));
+  const cls = c => !c ? "none" : c.status === "ok" ? (c.issues ? "warn" : "ok") : c.status === "pending" ? "pend" : c.status === "offline" ? "off" : "err";
+  const tip = (a, k, c) => `${a.name} · ${roundLabel(k)} · ${!c ? "没排到" : c.status === "ok" && c.issues ? `提到 ${c.issues} 个问题` : (RP_ST[c.status] || [c.status])[0]}`;
+  const colLabel = (k, i) => { const [d, t] = k.split(" "); return i === 0 || t === "00:00" ? `${Number(d.slice(8))}日` : t.slice(0, 2); };
+  return `<section class="card"><div class="section-title"><h2>最近 ${cols.length} 轮</h2><span class="hint">点格子或时间看那一轮的汇报</span></div>
+    <div class="rm-wrap"><div class="rm" style="--cols:${cols.length}"><span></span>
+      ${cols.map((c, i) => `<button class="col${ui.rr === c.round ? " on" : ""}" data-act="rr" data-r="${esc(c.round)}" title="${esc(roundLabel(c.round))} · ${c.ok}/${c.total} 汇报">${esc(colLabel(c.round, i))}</button>`).join("")}
+      ${ags.map(a => `<a class="nm" href="${agentHref(a.id, "reports")}" title="${esc(a.name)}">${esc(a.name)}</a>${cols.map(c => {
+        const x = cell.get(`${a.id}|${c.round}`);
+        return `<button class="c ${cls(x)}${ui.rr === c.round ? " sel" : ""}" ${x ? `data-act="rr" data-r="${esc(c.round)}"` : "disabled"} title="${esc(tip(a, c.round, x))}" aria-label="${esc(tip(a, c.round, x))}"></button>`;
+      }).join("")}`).join("")}
+    </div></div>
+    <div class="rm-legend">${[["ok", "已汇报"], ["warn", "提到问题"], ["err", "没回报 / 出错"], ["off", "离线"], ["pend", "等待中"], ["none", "没排到"]]
+      .map(([c, l]) => `<span><i class="c ${c}"></i>${l}</span>`).join("")}</div></section>`;
+}
+function pageReports() {
+  const tzNote = checkTz && localTz() !== checkTz ? `${esc(checkTz)} 时间 ` : "";
+  const desc = `每 ${reportHours} 小时请每个在线的 agent 汇报一次（${tzNote}${rpHours()}）${reports.next ? ` · 下一轮 ${esc(whenNext(reports.next))}${tzNote ? "（你这里的时间）" : ""}` : ""}`;
+  if (!live().length) return head("汇报", desc) + emptyState("report", "还没有 agent", "接入 agent 后，中控会定时请它们汇报，这里汇总成一页。", newKeyBtn());
+  if (reports.latest === null) return head("汇报", desc) + `<p class="empty">加载中…</p>`;
+  const sel = ui.rr, items = sel ? (roundView.key === sel ? roundView.items : null) : reports.latest;
+  const opts = `<option value="">每个 agent 最近一次</option>${reports.rounds.map(r => `<option value="${esc(r.round)}"${r.round === sel ? " selected" : ""}>${esc(roundLabel(r.round))} · ${r.ok}/${r.total} 汇报</option>`).join("")}`;
+  const toolbar = `<div class="toolbar"><select id="rr-sel" aria-label="选择轮次">${opts}</select>
+    ${sel ? `<button class="btn ghost sm" data-act="rr" data-r="">${icon("x", 14)}回到最近一次</button>` : ""}</div>`;
+  if (items === null) return head("汇报", desc) + `<div class="stack">${roundMatrix()}<div>${toolbar}<p class="empty">加载中…</p></div></div>`;
+  const rs = items.filter(r => byId(r.agent_id) && !byId(r.agent_id).revoked || sel).sort(byReport);
+  const n = f => rs.filter(f).length;
+  const stat = (label, val, cls) => `<div class="stat ${val ? cls : ""}"><span>${label}</span><b>${val}</b></div>`;
+  // 最近一次视图里还没汇报过的 agent，列在最后说明原因
+  const missing = sel ? [] : live().filter(a => !rs.some(r => r.agent_id === a.id));
+  const why = a => a.report_off ? "已关闭定时汇报" : !a.last_seen ? "还没接入" : a.report_task ? "正在等它第一次回报" : `下次 ${whenNext(a.next_report)}`;
+  return head("汇报", desc) + `<div class="stack">
+    ${roundMatrix()}
+    <div>${toolbar}
+      <div class="stats" style="margin-bottom:12px">
+        ${stat("已汇报", n(r => r.status === "ok"), "ok")}${stat("提到问题", n(rpAttn), "warn")}
+        ${stat("没回报 / 出错", n(rpBad), "error")}${stat("离线", n(r => r.status === "offline"), "")}
+        ${sel && n(r => r.status === "pending") ? stat("等待中", n(r => r.status === "pending"), "info") : ""}
+      </div>
+      ${rs.length ? `<div class="rp-grid">${rs.map(r => reportCard(r)).join("")}</div>` : `<div class="card"><p class="empty">${sel ? "这一轮没有汇报" : "还没有汇报。到下一轮时间，或在 agent 的「汇报」页签点「立即汇报」。"}</p></div>`}
+      ${missing.length ? `<p class="rp-wait">还没汇报过：${missing.map(a => `<a href="${agentHref(a.id, "reports")}">${esc(a.name)}</a>（${esc(why(a))}）`).join("、")}</p>` : ""}
+    </div></div>`;
+}
+function agentReportsTab(a) {
+  const on = !a.report_off, running = !!a.report_task;
+  const sched = a.revoked ? "" : `<div class="sched">
+      <label class="check"><input type="checkbox" id="rp-on" data-id="${a.id}"${on ? " checked" : ""}>每 ${reportHours} 小时汇报一次</label>
+      <span class="muted">${on && a.next_report ? `下次 ${esc(whenNext(a.next_report))}${checkTz && localTz() !== checkTz ? "（你这里的时间）" : ""}` : on ? "" : "已关闭"}</span>
+      <button class="btn sm" data-act="report-now" data-id="${a.id}"${running || !a.last_seen ? " disabled" : ""}>${icon("report", 14)}${running ? "等待回报…" : "立即汇报"}</button></div>`;
+  const items = agentReports.id === a.id ? agentReports.items : null;
+  const list = items === null ? `<p class="empty">加载中…</p>`
+    : items.length ? `<div class="rp-hist">${items.map(r => reportCard(r, false)).join("")}</div>` +
+      (agentReports.hasMore ? `<div class="more"><button class="btn sm" data-act="rp-more">${agentReports.loading ? "加载中…" : "加载更早的"}</button></div>` : "")
+    : `<div class="card"><p class="empty">还没有汇报。${a.last_seen ? "" : "它还没接入，"}到时间中控会请它汇报，也可以点「立即汇报」。</p></div>`;
+  return `<div class="stack" style="max-width:860px">
+    <section class="card"><div class="section-title"><h2>定时汇报</h2><a href="#/reports">所有 agent 的汇报 ${icon("arrow", 13)}</a></div>${sched}
+      <p class="muted" style="margin:0;font-size:13px">中控按 ${rpHours()}（${esc(checkTz)} 时间）给它派一条汇报任务，它回报一份简单的 JSON：一句话总结、做完的、在做的、遇到的问题和几个指标。离线时这一轮跳过。接入说明第 7 节写了格式。</p></section>
+    ${list}</div>`;
+}
+function reportMini(a) {
+  const items = agentReports.id === a.id ? agentReports.items : null;
+  if (items === null) return `<p class="empty sm">加载中…</p>`;
+  const r = items.find(x => x.status !== "pending");
+  if (!r) return `<p class="empty sm">${a.report_task ? "正在等它第一次汇报…" : a.report_off ? "已关闭定时汇报。" : "还没有汇报。"}</p>`;
+  const [label, cls] = RP_ST[r.status] || [r.status, ""], issues = r.report?.issues?.length || 0;
+  return `<div class="chk-sum"><span class="pill ${rpAttn(r) ? "warn" : cls}">${rpAttn(r) ? (issues ? `${issues} 个问题` : "需要关注") : label}</span>
+    <span class="muted" style="font-size:12.5px">${esc(ago(r.ts))}</span>
+    <p>${esc(r.status === "ok" ? r.report.summary || "（没写总结）" : r.error || RP_ST_HINT[r.status] || "")}</p></div>`;
+}
+
+/* ================= 页面：能力 ================= */
+function capIO(label, v) {
+  if (v === undefined || v === null) return "";
+  const plain = typeof v === "object" && !Array.isArray(v) && Object.values(v).every(x => x === null || typeof x !== "object");
+  return `<div><h4>${label}</h4>${plain ? fv(v) : `<pre class="json">${esc(typeof v === "string" ? v : JSON.stringify(v, null, 2))}</pre>`}</div>`;
+}
+function capItem(c, q = "") {
+  const k = `${c.owner_id}|${c.kind}`, on = c.providers.filter(isOnline).length;
+  return `<section class="card"><div class="cap-head"><span class="cap-kind">${esc(c.kind)}</span>${c.title ? `<h3>${esc(c.title)}</h3>` : ""}
+      ${showOwners() ? `<span class="owner">${esc(c.owner_name)}</span>` : ""}
+      <button class="btn sm" data-act="cap-task" data-k="${esc(k)}"${q ? ` data-q="${esc(q)}"` : ""}>${icon("send", 14)}派任务</button></div>
+    ${c.description ? `<p class="cap-desc">${esc(c.description)}</p>` : ""}
+    <div class="cap-by"><span>${c.providers.length} 个 agent 能做${c.providers.length > 1 ? `，${on} 个在线` : ""}：</span>${c.providers.map(a =>
+      `<a href="${agentHref(a.id)}">${avatar(a, "sm")}${esc(a.name)}${grpTag(a.group)}</a>`).join("")}</div>
+    ${c.input != null || c.output != null || c.example != null ? `<div class="cap-io">${capIO("输入 · payload", c.input)}${capIO("输出 · result", c.output)}${capIO("示例 payload", c.example)}</div>` : ""}
+  </section>`;
+}
+function pageCaps() {
+  const all = capCatalog(), q = ui.cq.trim().toLowerCase();
+  const title = "能力", desc = "agent 注册上来的能力：能处理哪种任务（kind）、payload 怎么写、谁在做";
+  if (!all.length) return head(title, desc) + emptyState("caps", "还没有 agent 注册能力",
+    "agent 启动时把自己能处理的任务类型连同说明、输入输出注册上来，这里就会列出谁能做什么，点一下就能派任务。接入说明第 6 节写了具体做法。",
+    `<a class="btn primary" href="#/guide">${icon("guide")}看接入指南</a>`);
+  const list = q ? all.filter(c => [c.kind, c.title, c.description, ...c.providers.map(a => a.name)].some(x => x && x.toLowerCase().includes(q))) : all;
+  return head(title, desc) +
+    `<div class="toolbar"><label class="search">${icon("search")}<input id="cq" placeholder="搜索能力、说明或 agent" value="${esc(ui.cq)}" autocomplete="off"></label></div>` +
+    (list.length ? `<div class="cap-list">${list.map(c => capItem(c)).join("")}</div>` : `<div class="card"><p class="empty">没有符合条件的能力</p></div>`);
+}
+// agent 概况里的能力清单
+function capMini(a) {
+  const caps = a.capabilities || [];
+  return caps.length ? `<ul class="cap-mini">${caps.map(c => `<li><span class="cap-kind">${esc(c.kind)}</span><span title="${esc(c.description || "")}">${esc(c.title || c.description || "")}</span>
+      ${a.revoked ? "" : `<button class="btn sm" data-act="cap-task" data-k="${esc(`${a.owner_id}|${c.kind}`)}" data-q="${esc(`${a.owner_id}:${a.group}`)}">${icon("send", 13)}派任务</button>`}</li>`).join("")}</ul>`
+    : `<p class="empty sm">它还没注册能力。按接入说明第 6 节注册后，大家就知道能派什么任务给它。</p>`;
+}
+
+/* ================= 页面：动态 ================= */
+function pageActivity() {
+  const f = ui.ev, c = feed.counts;
+  const filtered = f.agent || f.level || f.q.trim();
+  const stat = (lvl, label, val, cls) => `<button class="stat ${cls}${f.level === lvl ? " on" : ""}" data-act="ev-level" data-l="${lvl}">
+      <span>${label}</span><b>${c ? val : "–"}</b></button>`;
+  const ag = f.agent && byId(Number(f.agent));
+  return head("动态", ag ? `「${esc(ag.name)}」发生的事，实时更新` : "所有 agent 发生的事，实时更新") + `<div class="stack">
+    <div class="stats">
+      ${stat("", "24 小时内", c?.total, "")}
+      ${stat("attention", "需要关注", (c?.warn || 0) + (c?.error || 0), c?.warn || c?.error ? "warn" : "")}
+      ${stat("error", "错误", c?.error, c?.error ? "error" : "")}
+    </div>
+    <div>
+      <div class="toolbar">
+        <select id="ev-agent" aria-label="选择 agent"><option value="">全部 agent</option>
+          ${agents.map(a => `<option value="${a.id}"${String(a.id) === f.agent ? " selected" : ""}>${esc(a.name)}${a.revoked ? "（已吊销）" : ""}</option>`).join("")}</select>
+        <label class="search">${icon("search")}<input id="eq" placeholder="搜索动态内容" value="${esc(f.q)}" autocomplete="off"></label>
+        ${filtered ? `<button class="btn ghost sm" data-act="ev-clear">${icon("x", 14)}清除筛选</button>` : ""}
+      </div>
+      <section class="card">${timeline(!f.agent, filtered ? "没有符合条件的动态" : "还没有动态。agent 发出事件后会实时出现在这里。")}</section>
+    </div></div>`;
+}
+
+/* ================= 页面：任务 ================= */
+function taskPill(t) {
+  const [label, cls] = TASK_ST[t.status] || [t.status, ""];
+  return `<span class="pill ${cls}">${t.status === "running" ? '<span class="dot run"></span>' : ""}${label}</span>`;
+}
+function progressText(p) {
+  if (p == null) return "";
+  if (typeof p !== "object") return String(p);
+  for (const k of ["text", "message", "step", "summary", "status"]) if (typeof p[k] === "string" && p[k]) return p[k];
+  return typeof p.pct === "number" ? `${Math.round(p.pct)}%` : "";
+}
+// 列表里每一行的一句话说明
+function taskNote(t) {
+  switch (t.status) {
+    case "running": { const pt = progressText(t.progress); return [`${pt ? pt + " · " : ""}已执行 ${dur(now() - t.started_at)}${t.attempts > 1 ? `（第 ${t.attempts} 次）` : ""}`, ""]; }
+    case "queued": return t.attempts ? [`等待重试 · ${t.error || ""}`, "warn"] : [`已排队 ${dur(now() - t.created_at)}`, ""];
+    case "done": return [`用时 ${dur(t.finished_at - (t.started_at || t.created_at))}`, ""];
+    case "failed": return [t.error || "失败", "error"];
+    case "expired": return ["排队太久，没有被领走", ""];
+    default: return ["已取消", ""];
+  }
+}
+function taskRow(t) {
+  const [note, nc] = taskNote(t);
+  return `<a class="task-row${Date.now() - (freshTask.get(t.id) || 0) < 2500 ? " fresh" : ""}" href="#/tasks/${t.id}">
+    <span class="tid">#${t.id}</span>
+    <div style="min-width:0"><div class="tk">${esc(kindName(t.kind))}</div><div class="route">${esc(who(t.from_agent, t.from_name))} → ${esc(queueName(t.owner_name, t.group))}${t.worker ? ` · ${esc(who(t.worker, t.worker_name))} 执行` : ""}</div></div>
+    <div class="note ${nc}" title="${esc(note)}">${esc(note)}</div>
+    ${taskPill(t)}
+    <time title="${esc(new Date(t.created_at * 1000).toLocaleString("zh-CN"))}">${esc(evTime(t.created_at))}</time></a>`;
+}
+const newTaskBtn = (q = "") => `<button class="btn primary" data-act="new-task" data-q="${esc(q)}">${icon("send")}派任务</button>`;
+
+function pageTasks() {
+  const f = ui.tk, c = scoped(), filtered = f.status || f.queue || f.agent || f.q.trim();
+  const stat = (st, label, val, cls) => `<button class="stat ${val ? cls : ""}${f.status === st ? " on" : ""}" data-act="tk-status" data-s="${st}">
+      <span>${label}</span><b>${c ? val : "–"}</b></button>`;
+  const ag = f.agent && byId(Number(f.agent)), qu = f.queue && queues.find(q => `${q.owner_id}:${q.group}` === f.queue);
+  const queueCard = q => { const k = `${q.owner_id}:${q.group}`; return `<button class="queue-card${f.queue === k ? " on" : ""}" data-act="tk-queue" data-q="${esc(k)}">
+      <div class="qh">${q.group ? grpTag(q.group) : "<b>公共池</b>"}${showOwners() ? `<span class="owner">${esc(q.owner_name)}</span>` : ""}</div>
+      <div class="qn"><span><b class="${q.queued ? "q" : ""}">${q.queued}</b>排队</span><span><b>${q.running}</b>执行中</span><span><b>${q.online}</b>/ ${q.agents} 个 agent 在线</span></div></button>`; };
+  const list = tasks.key !== tasksKey() ? `<p class="empty">加载中…</p>`
+    : tasks.items.length ? `<div class="task-list">${tasks.items.map(taskRow).join("")}</div>` +
+      (tasks.hasMore ? `<div class="more"><button class="btn sm" data-act="tk-more" id="tk-more">${tasks.loading ? "加载中…" : "加载更早的"}</button></div>` : "")
+    : `<p class="empty">${filtered ? "没有符合条件的任务" : "还没有任务。agent 用 key 调 push 接口提交，或者在这里点「派任务」。"}</p>`;
+  const sub = ag ? `「${esc(ag.name)}」发出或领过的任务` : qu ? `「${esc(queueName(qu.owner_name, qu.group))}」队列里的任务` : "按队列派发给 agent 的任务";
+  return head("任务", sub + "，实时更新", newTaskBtn(f.queue)) + `<div class="stack">
+    <div class="stats">
+      ${stat("queued", "排队中", c?.queued, "info")}
+      ${stat("running", "执行中", c?.running, "run")}
+      ${stat("done", "24 小时完成", c?.done, "")}
+      ${stat("failed", "24 小时失败", c?.failed, "error")}
+    </div>
+    ${queues.length ? `<section><div class="section-title"><h2>队列</h2><span class="hint">点一下按队列筛选</span></div>
+      <div class="queue-grid">${queues.map(queueCard).join("")}</div></section>` : ""}
+    <div>
+      <div class="toolbar">
+        <select id="tk-queue" aria-label="选择队列"><option value="">全部队列</option>
+          ${queues.map(q => { const k = `${q.owner_id}:${q.group}`; return `<option value="${esc(k)}"${k === f.queue ? " selected" : ""}>${esc(queueName(q.owner_name, q.group))}</option>`; }).join("")}</select>
+        <select id="tk-agent" aria-label="选择 agent"><option value="">全部 agent</option>
+          ${agents.map(a => `<option value="${a.id}"${String(a.id) === f.agent ? " selected" : ""}>${esc(a.name)}${a.revoked ? "（已吊销）" : ""}</option>`).join("")}</select>
+        <select id="tk-st" aria-label="选择状态"><option value="">全部状态</option>
+          ${Object.entries(TASK_ST).map(([k, [l]]) => `<option value="${k}"${k === f.status ? " selected" : ""}>${l}</option>`).join("")}</select>
+        <label class="search">${icon("search")}<input id="tq" placeholder="搜索类型或 #编号" value="${esc(f.q)}" autocomplete="off"></label>
+        ${filtered ? `<button class="btn ghost sm" data-act="tk-clear">${icon("x", 14)}清除筛选</button>` : ""}
+      </div>
+      <section class="card">${list}</section>
+    </div></div>`;
+}
+
+function jsonBlock(v, k) {
+  if (v === null || v === undefined) return `<p class="empty">无</p>`;
+  if (typeof v !== "object") return `<pre class="json">${esc(v)}</pre>`;
+  return `${fv(v)}<details class="more-info" data-k="${k}"><summary>原始 JSON</summary><div class="box"><pre class="json">${esc(JSON.stringify(v, null, 2))}</pre></div></details>`;
+}
+
+function pageTask() {
+  const back = `<a class="back" href="#/tasks">${icon("back", 14)}任务</a>`;
+  const t = taskDetail.id === route.id ? taskDetail.task : null;
+  if (t === null) return back + `<p class="empty">加载中…</p>`;
+  if (t === false) return back + emptyState("tasks", "没有这个任务", "它可能已经被清理了（结束超过 30 天的任务会删掉）。");
+  const final = TASK_FINAL.includes(t.status), ts = x => x ? `${date(x)} ${clock(x)}` : null;
+  const info = {
+    "队列": queueName(t.owner_name, t.group), "发起方": who(t.from_agent, t.from_name),
+    ...(t.target ? { "只给": who(t.target) } : {}),
+    "执行方": t.worker ? who(t.worker, t.worker_name) : "还没有被领走",
+    "尝试": `${t.attempts} / ${t.max_attempts} 次`, "优先级": t.priority, "每次时限": dur(t.timeout),
+    ...(t.status === "running" && t.lease_until ? { "需在此前回报": `${clock(t.lease_until)}（还剩 ${dur(t.lease_until - now())}）` } : {}),
+    ...(t.expires_at && !final ? { "排队截止": ts(t.expires_at) } : {}),
+    ...(t.dedupe_key ? { "去重 key": t.dedupe_key } : {}),
+    "创建": ts(t.created_at), "开始": ts(t.started_at), "结束": ts(t.finished_at),
+    ...(final && t.started_at ? { "用时": dur(t.finished_at - t.started_at) } : {}),
+  };
+  const pct = typeof t.progress?.pct === "number" ? Math.max(0, Math.min(100, t.progress.pct)) : null;
+  return back + `<div class="page-head"><div>
+      <div class="title-row"><h1 class="mono" style="font-size:20px">${esc(kindName(t.kind))}</h1>${taskPill(t)}</div>
+      <p>#${t.id} · ${esc(who(t.from_agent, t.from_name))} → ${esc(queueName(t.owner_name, t.group))} · ${esc(ago(t.created_at))}创建</p></div>
+    <div class="head-actions">
+      ${final ? "" : `<button class="btn danger" data-act="task-cancel" data-id="${t.id}">${icon("ban")}取消</button>`}
+      ${["failed", "canceled", "expired"].includes(t.status) ? `<button class="btn primary" data-act="task-retry" data-id="${t.id}">${icon("rotate")}重新派发</button>` : ""}
+    </div></div>
+    <div class="detail-grid">
+      <div class="stack">
+        <section class="card"><div class="section-title"><h2>概况</h2></div>${fv(info)}</section>
+        ${t.progress != null ? `<section class="card"><div class="section-title"><h2>进度</h2></div>${pct != null ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}${jsonBlock(t.progress, "tp")}</section>` : ""}
+      </div>
+      <div class="stack">
+        ${t.error ? `<section class="card"><div class="section-title"><h2>${t.status === "failed" ? "失败原因" : "上次出错"}</h2></div>
+          <div class="err-box${t.status === "failed" ? "" : " warn"}">${esc(t.error)}</div></section>` : ""}
+        ${t.status === "done" || t.result != null ? `<section class="card"><div class="section-title"><h2>结果</h2>
+          ${t.result != null ? `<a class="card-head-link" href="#" data-act="copy-json" data-w="result">${icon("copy", 14)}复制</a>` : ""}</div>${jsonBlock(t.result, "tr")}</section>` : ""}
+        <section class="card"><div class="section-title"><h2>任务内容</h2>
+          ${t.payload != null ? `<a class="card-head-link" href="#" data-act="copy-json" data-w="payload">${icon("copy", 14)}复制</a>` : ""}</div>${jsonBlock(t.payload, "tpl")}</section>
+      </div>
+    </div>`;
+}
+
+/* ================= 页面：用户 / 接入指南 ================= */
+function pageUsers() {
+  if (!me?.is_admin) return head("用户", "") + emptyState("users", "没有权限", "只有管理员能管理用户。");
+  const desc = "每个用户只看到自己的 agent、动态和任务；管理员看全部";
+  if (users === null) return head("用户", desc) + `<p class="empty">加载中…</p>`;
+  const row = u => `<div class="user-row${u.disabled ? " off" : ""}">
+      <div class="nm"><span>${esc(u.username)}</span>${u.id === me.id ? `<span class="pill">你</span>` : ""}${u.managed ? `<span class="pill" title="账号和密码来自服务器环境变量">内置</span>` : ""}</div>
+      <div>${u.disabled ? `<span class="pill error">已停用</span>` : u.is_admin ? `<span class="pill info">管理员</span>` : `<span class="pill">成员</span>`}</div>
+      <div class="sm cnt">${u.agents} 个 agent</div>
+      <div class="sm when">${esc(date(u.created_at))}</div>
+      <div class="ops">${u.managed ? `<span class="sm">由环境变量管理</span>` : `
+        <button class="btn sm" data-act="user-pass" data-id="${u.id}">${icon("lock", 14)}重置密码</button>
+        ${u.id === me.id ? "" : `<button class="btn sm" data-act="user-admin" data-id="${u.id}">${u.is_admin ? "取消管理员" : "设为管理员"}</button>
+        <button class="btn sm${u.disabled ? "" : " danger"}" data-act="user-disable" data-id="${u.id}">${u.disabled ? "恢复" : "停用"}</button>`}`}</div></div>`;
+  return head("用户", desc, `<button class="btn primary" data-act="new-user">${icon("plus")}添加用户</button>`) + `<div class="stack">
+    <section class="card"><div class="user-row head"><div>用户名</div><div>角色</div><div class="cnt">Agent</div><div class="when">创建</div><div></div></div>${users.map(row).join("")}</section>
+    <section class="card"><div class="section-title"><h2>说明</h2></div><ul class="plain">
+      <li>用户由管理员在这里添加，把用户名和初始密码发给对方，对方登录后可以在右上角的账号菜单里自己改密码。</li>
+      <li>停用后，这个用户立刻退出登录，名下 agent 的 key 也全部失效；恢复后 key 重新可用。</li>
+      <li>不同用户的任务队列互相隔开，同名分组也不会串：别人的 agent 看不到也领不到你的任务。</li>
+    </ul></section></div>`;
+}
+
+function pageGuide() {
+  const ls = live().filter(a => a.api_key);
+  if (!ls.some(a => a.id === ui.guideAgent)) ui.guideAgent = ls[0]?.id ?? null;
+  return head("接入指南", "三步把一个 agent 接进中控") + `<div class="stack" style="max-width:900px">
+    <section class="card"><div class="steps">
+      <div class="step"><div><h3>接入新 agent</h3><p>每个 agent 一个 key，用名字区分。要用任务队列的话可以顺便填个分组，同组的 agent 共享一个队列。key 之后随时可以在 agent 的「设置」里查看。</p>${newKeyBtn()}</div></div>
+      <div class="step"><div><h3>把接入说明发给 agent</h3>
+        <p>选择对应的 agent，复制接入说明发给它（或负责它的同事）。说明里已经包含地址、key 和全部接口，照着做就能接入。</p>
+        ${ls.length ? `<div class="row"><select id="guide-agent" aria-label="选择 agent">${ls.map(a => `<option value="${a.id}"${a.id === ui.guideAgent ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select>
+          <button class="btn primary" data-act="copy-guide">${icon("copy")}复制接入说明</button></div>`
+          : `<p class="empty">先在上一步创建一个 agent。</p>`}</div></div>
+      <div class="step"><div><h3>在中控里调度它</h3><p>agent 开始上报后会立刻出现在左侧的 agent 列表和「中控台」里，状态和动态实时更新；它注册的能力可以直接派任务。</p></div></div>
+    </div></section>
+    <section class="card"><div class="section-title"><h2>agent 会上报什么</h2></div>
+      <ul class="plain">
+        <li><b>当前状态</b>：一句话说明正在做什么，再加上它想展示的其它信息（任务、队列、配置等），显示在 agent 工作区的「概况」里。</li>
+        <li><b>动态</b>：发生了什么事，比如发出一条消息、扣下一条待确认的内容、遇到错误。分为普通、告警、错误三种。</li>
+        <li><b>心跳</b>：空闲时告诉中控“我还在”。${mins()} 分钟内没有任何上报就显示为离线。</li>
+      </ul></section>
+    <section class="card"><div class="section-title"><h2>任务队列</h2><a href="#/tasks">去任务页 ${icon("arrow", 13)}</a></div>
+      <ul class="plain">
+        <li><b>分组</b>：创建 agent 时可以填一个分组，key 会带上这个前缀（比如 <code>ami_translate_…</code>）。同组的 agent 共享一个任务队列。</li>
+        <li><b>发任务（push）</b>：用哪个 key 提交，任务就进这个 key 所在分组的队列；不分组的 key 提交的任务进公共池。控制台也可以直接「派任务」到任意队列。</li>
+        <li><b>领任务（pull）</b>：agent 领自己分组的队列和公共池里的任务。有任务立刻返回，没有就挂着最多 30 秒再返回，不用频繁请求。</li>
+        <li><b>不会被抢</b>：一条任务同一时间只会被一个 agent 领走。领到时会附带一个 token，回报必须带上它；超时没回报的任务会被收回重新派发，之前那次领取作废。</li>
+        <li>每个用户的队列互相隔开。接入说明里已经包含任务接口，同一个 key 既能发也能领。</li>
+      </ul>
+      <div class="legend" style="margin-top:16px">
+        ${Object.entries({ queued: "等 agent 来领", running: "已被一个 agent 领走，正在做", done: "执行方回报了结果", failed: "回报失败，或超时次数用完", canceled: "发起方或控制台取消了", expired: "排队超过设定时间没人领" })
+          .map(([k, d]) => `${taskPill({ status: k })}<p>${d}</p>`).join("")}
+      </div></section>
+    <section class="card"><div class="section-title"><h2>能力</h2><a href="#/caps">去能力页 ${icon("arrow", 13)}</a></div>
+      <ul class="plain">
+        <li><b>注册</b>：agent 启动时把自己能处理的任务类型（kind）报上来，附上一句说明、payload 和结果的字段、一份示例。接入说明第 6 节写了做法。</li>
+        <li><b>派任务</b>：「能力」页列出每种能力、谁能做、在不在线；点「派任务」会选好队列、填好类型和示例 payload。在派任务弹窗里手填类型时，也会提示这个队列里有没有 agent 注册过它。</li>
+        <li><b>agent 之间</b>：agent 可以查同一个账号下的其它 agent 能做什么，再把任务发过去；结果里会标出用它自己的 key 发过去能不能被领到（取决于分组）。</li>
+      </ul></section>
+    <section class="card"><div class="section-title"><h2>定时汇报</h2><a href="#/reports">去汇报页 ${icon("arrow", 13)}</a></div>
+      <ul class="plain">
+        <li><b>做什么</b>：中控每 ${reportHours} 小时（${esc(checkTz)} 时间 ${rpHours()}）请每个在线的 agent 汇报一次：一句话总结、做完的、在做的、遇到的问题和几个指标。</li>
+        <li><b>在哪看</b>：「汇报」页把所有 agent 的最新汇报排成一页，提到问题的排最前面；上方的格子是最近几轮谁汇报了、谁没回，点一格看那一轮。每个 agent 的「汇报」页签里有它的历史汇报。</li>
+        <li><b>开关</b>：默认对所有 agent 开启，在 agent 的「汇报」页签里可以关闭，或点「立即汇报」马上要一份。接入说明第 7 节写了 agent 要怎么回报。</li>
+      </ul></section>
+    <section class="card"><div class="section-title"><h2>每日自检</h2></div>
+      <ul class="plain">
+        <li><b>做什么</b>：中控每天定时给 agent 派一条自检任务（只有它自己能领），agent 把各项功能真的试一遍——登录状态还在不在、API key 还有没有余额、网络通不通——再把每一项的结果报回来。</li>
+        <li><b>怎么开启</b>：agent 启动时声明自己有哪些检查项，中控就自动开启（默认每天 09:00，${esc(checkTz)} 时间），并马上做第一次。在 agent 的「自检」页签里可以改时间、关闭，或点「立即自检」。接入说明第 5 节写了具体做法。</li>
+        <li><b>没通过时</b>：中控台顶部和左侧列表变红，写明哪一项、什么原因（登录失效 / 余额不足 / 网络不通…）和怎么处理；同时推送到你设置的通知地址（<a href="#" data-act="notify">设置通知</a>）。30 分钟内没领走、或领走后 5 分钟内没回报，也算没通过。</li>
+        <li><b>处理完</b>：点「立即自检」，通过后告警消失，并推送一条「恢复正常」。一直正常就不打扰。</li>
+      </ul></section>
+    <section class="card"><div class="section-title"><h2>状态颜色</h2></div>
+      <div class="legend">
+        <span class="pill on"><span class="dot on"></span>运行中 / 空闲</span><p>在线，正常工作</p>
+        <span class="pill warn"><span class="dot warn"></span>告警</span><p>还在运行，但有需要留意的情况</p>
+        <span class="pill error"><span class="dot error"></span>出错</span><p>需要处理（包括自检没通过），会出现在中控台和左侧列表的「需要处理」里</p>
+        <span class="pill"><span class="dot"></span>离线</span><p>${mins()} 分钟内没有上报</p>
+      </div></section></div>`;
+}
+
+/* ================= 渲染 ================= */
+const PAGE_TITLE = { overview: "中控台", tasks: "任务", reports: "汇报", caps: "能力", activity: "动态", users: "用户", guide: "接入指南" };
+function render() {
+  renderTop();
+  renderRoster();
+  const page = { overview: pageOverview, agents: pageAgent, activity: pageActivity, tasks: route.id ? pageTask : pageTasks,
+                 reports: pageReports, caps: pageCaps, users: pageUsers, guide: pageGuide }[route.page] || pageOverview;
+  // 刷新时保留：展开着的详情、输入框焦点
+  const open = [...document.querySelectorAll("#page details[open]")].map(d => d.dataset.k);
+  const ae = document.activeElement, focusId = ae && ae.id && $("page").contains(ae) ? ae.id : null;
+  const sel = focusId && ae.tagName === "INPUT" ? [ae.selectionStart, ae.selectionEnd] : null, val = sel && ae.value;
+  $("page").innerHTML = page();
+  const bad = live().filter(a => health(a).group === "error").length;
+  const cur = route.page === "agents" ? byId(route.id)?.name : PAGE_TITLE[route.page];
+  document.title = `${bad ? `(${bad} 出错) ` : ""}${cur ? cur + " · " : ""}AMI 中控`;
+  open.forEach(k => { const d = document.querySelector(`#page details[data-k="${k}"]`); if (d) d.open = true; });
+  if (focusId && $(focusId)) { if (sel) $(focusId).value = val; $(focusId).focus(); if (sel) try { $(focusId).setSelectionRange(...sel); } catch {} }
+  // 滚到底自动加载更早的动态 / 任务
+  moreObserver.disconnect();
+  if ($("more")) moreObserver.observe($("more"));
+  if ($("tk-more")) moreObserver.observe($("tk-more"));
+}
+const moreObserver = new IntersectionObserver(es => {
+  if (es.some(x => x.isIntersecting)) { loadFeed(true).catch(() => {}); loadTasks(true).catch(() => {}); }
+}, { rootMargin: "300px" });
+
+// 在动态页往下翻时来了新动态：顶部给个提示，点一下回到最新
+function setUnseen(n) {
+  ui.unseen = n;
+  $("new-pill").hidden = !n;
+  $("new-pill").innerHTML = `${icon("activity", 14)}${n} 条新动态`;
+}
+window.addEventListener("scroll", () => { if (ui.unseen && scrollY < 120) setUnseen(0); }, { passive: true });
+
+/* ================= 主题 ================= */
+const THEMES = { system: ["跟随系统", "monitor"], light: ["浅色", "sun"], dark: ["深色", "moon"] };
+let theme = (() => { try { return localStorage.getItem("ami-theme") || "system"; } catch { return "system"; } })();
+function setTheme(t) {
+  theme = THEMES[t] ? t : "system";
+  if (theme === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem("ami-theme", theme); } catch {}
+  $("btn-theme").innerHTML = icon(THEMES[theme][1]);
+  $("btn-theme").title = `主题：${THEMES[theme][0]}（点一下切换）`;
+}
+
+/* ================= 菜单 / 命令面板 ================= */
+function openMenu(anchor, html) {
+  const m = $("menu");
+  m.innerHTML = html;
+  m.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  m.style.top = `${r.bottom + 6}px`;
+  m.style.left = `${Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8))}px`;
+  m.querySelector("button")?.focus({ preventScroll: true });
+}
+const closeMenu = () => { $("menu").hidden = true; };
+const mi = (act, ic, label, extra = "", hint = "") => `<button class="mi${act === "logout" ? " danger" : ""}" data-act="${act}" ${extra}>${icon(ic, 15)}<span>${label}</span>${hint ? `<small>${hint}</small>` : ""}</button>`;
+function userMenu() {
+  return `<div class="mh"><b>${esc(me.username)}</b>${me.is_admin ? "管理员" : "成员"}</div><hr>
+    ${mi("pass", "lock", "修改密码")}
+    ${mi("notify", "bell", "通知设置", "", me.notify_url ? "已开启" : "未设置")}
+    ${me.is_admin ? mi("go", "users", "用户管理", 'data-href="#/users"') : ""}
+    ${mi("go", "guide", "接入指南", 'data-href="#/guide"')}
+    ${mi("theme", THEMES[theme][1], "主题", "", THEMES[theme][0])}<hr>
+    ${mi("logout", "logout", "退出登录")}`;
+}
+
+let cmd = { items: [], i: 0 };
+function cmdItems(q) {
+  q = q.trim().toLowerCase();
+  const hit = (...xs) => !q || xs.some(x => x && String(x).toLowerCase().includes(q));
+  const out = [];
+  const add = (sec, it) => out.push({ sec, ...it });
+  for (const a of live().sort(byAttention)) if (hit(a.name, a.group, a.status?.summary)) add("Agents", { html: avatar(a, "sm"), label: a.name, sub: agentSub(a), href: agentHref(a.id) });
+  for (const c of capCatalog()) if (hit(c.kind, c.title, c.description)) add("按能力派任务", { ic: "send", label: c.kind, sub: [c.title, `${c.providers.length} 个 agent 能做`].filter(Boolean).join(" · "), act: "cap-task", data: { k: `${c.owner_id}|${c.kind}` } });
+  for (const [p, l, ic] of [...NAV, ...(me?.is_admin ? [["users", "用户", "users"]] : []), ["guide", "接入指南", "guide"]])
+    if (hit(l, p)) add("页面", { ic, label: l, href: `#/${p}` });
+  for (const [act, ic, l, sub] of [["new-key", "plus", "接入新 agent", "创建 API key"], ["new-task", "send", "派任务", "发到任意队列"], ["notify", "bell", "通知设置", "自检出问题时推送到群"],
+                                   ["theme", THEMES[theme][1], "切换主题", THEMES[theme][0]], ["pass", "lock", "修改密码", ""]])
+    if (hit(l, sub)) add("操作", { ic, label: l, sub, act });
+  return out.slice(0, 40);
+}
+function renderCmd() {
+  const q = $("cmd-q").value;
+  cmd.items = cmdItems(q);
+  cmd.i = Math.max(0, Math.min(cmd.i, cmd.items.length - 1));
+  let sec = null, out = "";
+  cmd.items.forEach((it, i) => {
+    if (it.sec !== sec) { out += `<div class="cmd-sec">${it.sec}</div>`; sec = it.sec; }
+    out += `<button class="cmd-it${i === cmd.i ? " sel" : ""}" data-ci="${i}" type="button">${it.html || icon(it.ic, 16)}<span class="lbl${it.sec === "按能力派任务" ? " mono" : ""}">${esc(it.label)}</span><span class="sub">${esc(it.sub || "")}</span></button>`;
+  });
+  $("cmd-list").innerHTML = out || `<div class="cmd-empty">没有找到「${esc(q)}」</div>`;
+  $("cmd-list").querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+}
+function openCmd() {
+  closeMenu();
+  if ($("dlg-cmd").open) return;
+  $("cmd-q").value = ""; cmd.i = 0; renderCmd();
+  $("dlg-cmd").showModal(); $("cmd-q").focus();
+}
+function runCmd(it) {
+  if (!it) return;
+  $("dlg-cmd").close();
+  if (it.href) location.hash = it.href;
+  else doAct(it.act, it.data || {});
+}
+
+/* ================= 交互 ================= */
+let toastTimer;
+function toast(msg, kind = "") {
+  const t = $("toast");
+  t.className = `toast show ${kind}`;
+  t.innerHTML = (kind === "error" ? icon("alert", 15) : icon("check", 15)) + `<span>${esc(msg)}</span>`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = "toast", 2400);
+}
+
+function confirmBox({ title, message, ok, danger }) {
+  return new Promise(resolve => {
+    $("cf-title").textContent = title; $("cf-msg").textContent = message;
+    $("cf-ok").textContent = ok; $("cf-ok").className = "btn " + (danger ? "danger solid" : "primary");
+    const d = $("dlg-confirm");
+    const done = v => { d.close(); resolve(v); };
+    $("cf-ok").onclick = () => done(true);
+    $("cf-cancel").onclick = () => done(false);
+    d.oncancel = () => resolve(false);
+    d.showModal();
+  });
+}
+
+// 弹窗输入名字：创建 / 改名共用
+let nameAction = null;
+function askName({ title, desc, ok, value = "", group = false }, action) {
+  $("name-title").textContent = title; $("name-desc").textContent = desc; $("name-ok").textContent = ok;
+  $("name-input").value = value; $("name-err").textContent = ""; nameAction = action;
+  $("name-group-wrap").hidden = !group;
+  $("name-group").value = "";
+  if (group) {
+    $("group-list").innerHTML = [...new Set(agents.filter(a => a.group && a.owner_id === me.id && !a.revoked).map(a => a.group))]
+      .map(g => `<option value="${esc(g)}">`).join("");
+    groupHint();
+  }
+  $("dlg-name").showModal(); $("name-input").select();
+}
+
+async function copyText(text, msg) {
+  try { await navigator.clipboard.writeText(text); toast(msg); }
+  catch { toast("复制失败，浏览器不允许访问剪贴板", "error"); }
+}
+
+// 发给 agent 的接入说明：技术细节都在这里，页面上不展示
+function guideText(a) {
+  const base = location.origin;
+  return `请把你的运行状态上报到 AMI 中控（你在中控里的名字：${a.name}）。
+
+地址：${base}
+API key：${a.api_key}
+
+所有请求都带这两个请求头：
+  Authorization: Bearer ${a.api_key}
+  Content-Type: application/json
+
+1. 上报当前状态（整份替换）
+   PUT ${base}/api/v1/status
+   {"state": "running", "summary": "一句话说明正在做什么", ...其它想展示的字段}
+   state 可选 running / idle / warn / error；只更新部分字段用 PATCH。
+
+2. 发事件（发生了什么）
+   POST ${base}/api/v1/events
+   {"kind": "sent", "text": "已回复张三", "level": "info", "data": {...可选}}
+   level 可选 info / warn / error；也可以一次发一个数组，最多 200 条。
+
+3. 心跳（空闲时每分钟一次即可）
+   POST ${base}/api/v1/heartbeat
+   ${mins()} 分钟内没有任何上报会显示为离线。
+
+示例：
+curl -X PUT ${base}/api/v1/status \\
+  -H "Authorization: Bearer ${a.api_key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"state":"running","summary":"开始工作"}'
+
+4. 任务队列（同一个 key 既能发任务也能领任务）
+   ${a.group ? `你的分组是「${a.group}」：你提交的任务进「${a.group}」队列，同组的 agent 来领；你能领「${a.group}」队列和公共池里的任务。`
+     : "你不分组：你提交的任务进公共池，所有 agent 都能领；你也只领公共池里的任务。"}
+   同一条任务同一时间只会被一个 agent 领走。
+
+   发任务：
+   POST ${base}/api/v1/tasks
+   {"kind": "translate", "payload": {...任意 JSON}}
+   可选：priority（-100~100，大的先领）、max_attempts（默认 3）、timeout（每次执行的时限秒数，默认 600）、
+         expires_in（排队多少秒没人领就过期）、dedupe_key（同一个队列里同一个值只建一次，防重复提交）
+   等结果：GET ${base}/api/v1/tasks/{id}?wait=30   （任务一结束立刻返回，最多等 30 秒）
+   取消：POST ${base}/api/v1/tasks/{id}/cancel
+
+   领任务：
+   POST ${base}/api/v1/tasks/pull
+   {"wait": 25, "limit": 1}
+   有任务立刻返回，没有就最多挂 wait 秒后返回空列表，然后再调一次即可。
+   返回的每个任务都带 token，回报时原样带上：
+   做完：POST ${base}/api/v1/tasks/{id}/complete   {"token": "…", "result": {...}}
+   失败：POST ${base}/api/v1/tasks/{id}/fail       {"token": "…", "error": "原因", "retry": false}
+   做得久：POST ${base}/api/v1/tasks/{id}/progress {"token": "…", "progress": {"pct": 40, "text": "在做第 2 步"}}，会把时限往后延。
+   超过时限没回报的任务会被收回重新派发，之前的 token 随之作废。回报时拿到 409，说明这次领取已失效（超时或被取消），丢掉结果即可。
+
+5. 每日自检（让中控每天确认你的各项功能还正常）
+   中控每天定时派给你一条 kind 为 "${CHECK_KIND}" 的任务（只派给你，同组的其它 agent 领不到）。
+   领到后把每项功能真的试一遍——比如用当前登录态拉一次消息列表、用 API key 发一个最小的请求，而不只是看配置在不在——
+   然后用 complete 回报每一项的结果：
+   POST ${base}/api/v1/tasks/{id}/complete
+   {"token": "…", "result": {"checks": [
+     {"name": "Lark 登录", "ok": true},
+     {"name": "OpenAI 余额", "ok": false, "kind": "quota", "message": "insufficient_quota", "hint": "去 OpenAI 后台充值"}
+   ]}}
+   kind 是没通过的原因：auth（登录 / 授权失效）、quota（余额 / 额度不足）、network（网络不通）、config（配置问题）、other。
+   hint 写给人看：怎么处理，会出现在控制台和推送的通知里。
+   启动时先声明有哪些检查项，中控会自动开启每日自检（默认每天 09:00，${checkTz} 时间），并马上派第一次：
+   PUT ${base}/api/v1/checks
+   {"checks": ["Lark 登录", "OpenAI 余额"]}
+   领任务时如果用 kinds 过滤，记得把 "${CHECK_KIND}" 加进去。30 分钟内没领走、或领走后 5 分钟内没回报，都算自检没通过。
+   用 Python 的话，中控的 ami_client.py 已经封装好：@ami.check("Lark 登录") 注册检查，work() 或 serve_checks() 会自动处理自检任务。
+
+6. 注册能力（告诉中控你能处理哪些任务）
+   启动时把你能处理的任务类型（kind，和领任务时的 kind 一致）报上来，整份替换，传空数组就是全部撤掉：
+   PUT ${base}/api/v1/capabilities
+   {"capabilities": [
+     {"kind": "translate", "title": "中译英", "description": "把中文翻译成英文，保留原有格式",
+      "input": {"text": "要翻译的文字"}, "output": {"text": "译文"}, "example": {"text": "你好"}}
+   ]}
+   只有 kind 必填；input / output 写 payload 和结果的字段说明（或 JSON Schema），example 是一份示例 payload，控制台派任务时会预填。
+   注册后会出现在控制台的「能力」页和你的详情里，大家据此给你派任务。
+   想找别的 agent 帮忙时，先查谁能做：
+   GET ${base}/api/v1/capabilities
+   每项带 providers（谁注册的、在不在线）和 reachable：为 true 时，用你的 key 提交这个 kind 的任务，注册了它的 agent 能领到。
+   用 Python 的话：@ami.capability("translate", "把中文翻译成英文", example={...}) 注册处理函数，ami.work() 会自动注册并按 kind 分派；ami.find("translate") 查能力。
+
+7. 定时汇报（让用户每隔几个小时看一眼你在做什么）
+   中控每 ${reportHours} 小时（${checkTz} 时间 ${rpHours()}）派给你一条 kind 为 "${REPORT_KIND}" 的任务（只派给你；你不在线时这一轮跳过）。
+   payload 里的 since 是你上一次汇报的时间戳（第一次是 null），format 是下面这份字段说明。
+   领到后用 complete 回报一份简单的 JSON，控制台会把所有 agent 的汇报汇总成一页给用户看：
+   POST ${base}/api/v1/tasks/{id}/complete
+   {"token": "…", "result": {
+     "summary": "一句话：这段时间整体怎么样",
+     "state": "running",
+     "done": ["回复了 30 条消息", "整理了日报"],
+     "doing": ["等张三确认报价"],
+     "issues": ["Lark 接口偶尔超时"],
+     "metrics": {"消息": 32, "扣下": 2}
+   }}
+   都是可选的，但最好至少写 summary；issues 只写需要人知道或处理的事，有内容时汇报会标出来。其它字段会原样展示。
+   领任务时如果用 kinds 过滤，记得把 "${REPORT_KIND}" 加进去。${REPORT_WAIT_MIN} 分钟内没领走、或领走后 5 分钟内没回报，这一轮记为没回报。
+   用 Python 的话：work() 或 serve_hub() 会自动处理，默认回报最近一次 status() 的内容；想写得更具体就用 @ami.reporter 注册一个返回上面这种 dict 的函数。
+`;
+}
+
+function openNewTask(preset, cap) {
+  const qs = queues.slice();
+  if (!qs.some(q => q.owner_id === me.id && q.group === "")) qs.unshift({ owner_id: me.id, owner_name: me.username, group: "", agents: 0, online: 0 });
+  const pick = preset || (route.page === "agents" && byId(route.id) ? `${byId(route.id).owner_id}:${byId(route.id).group}` : `${me.id}:`);
+  $("task-q").innerHTML = qs.map(q => { const k = `${q.owner_id}:${q.group}`;
+    return `<option value="${esc(k)}" data-agents="${q.agents}" data-online="${q.online}"${k === pick ? " selected" : ""}>${esc(queueName(q.owner_name, q.group))}</option>`; }).join("");
+  taskQueueHint();
+  if (cap) { $("task-kind").value = cap.kind; $("task-payload").value = ""; payloadAuto = false; }
+  taskKindHint();
+  $("task-err").textContent = "";
+  $("dlg-task").showModal();
+  (cap ? $("task-payload") : $("task-kind")).focus();
+}
+// 选的队列里谁注册了这个 kind；payload 还空着（或是上次自动填的）时填上示例
+let payloadAuto = false;
+function taskKindHint() {
+  const q = $("task-q").value, kind = $("task-kind").value.trim(), cat = capCatalog(), i = q.indexOf(":"), owner = Number(q.slice(0, i));
+  $("task-kinds").innerHTML = [...new Set(cat.filter(c => c.owner_id === owner && capProviders(q, c.kind).length).map(c => c.kind))]
+    .map(k => `<option value="${esc(k)}">`).join("");
+  const c = cat.find(x => x.owner_id === owner && x.kind === kind), ps = kind ? capProviders(q, kind) : [], hint = $("task-kind-hint");
+  hint.className = "field-hint";
+  if (!kind) hint.textContent = "";
+  else if (ps.length) hint.textContent = [[c.title, c.description?.split("\n")[0]].filter(Boolean).join("："),
+    `${ps.length} 个 agent 注册了，${ps.filter(isOnline).length} 个在线`].filter(Boolean).join(" · ");
+  else {
+    hint.className = "field-hint warn";
+    hint.textContent = c ? `这个队列里没有 agent 注册「${kind}」，注册了它的 ${c.providers.map(a => a.name).join("、")} 在别的队列` : cat.length ? `没有 agent 注册过「${kind}」，领到的 agent 不一定会做` : "";
+  }
+  const pl = $("task-payload");
+  if ((payloadAuto || !pl.value.trim()) && c?.example !== undefined && ps.length) {
+    pl.value = typeof c.example === "string" ? c.example : JSON.stringify(c.example, null, 2); payloadAuto = true;
+  } else if (payloadAuto && !(c && ps.length)) { pl.value = ""; payloadAuto = false; }
+}
+function taskQueueHint() {
+  const o = $("task-q").selectedOptions[0], n = Number(o?.dataset.agents || 0), on = Number(o?.dataset.online || 0);
+  $("task-q-hint").className = "field-hint" + (on ? "" : " warn");
+  $("task-q-hint").textContent = !n ? "这个队列现在没有 agent，任务会一直排队，直到有 agent 来领" : `${n} 个 agent 能领，其中 ${on} 个在线`;
+}
+
+function openPass(user) {
+  if (!user && me.managed) return toast("内置管理员的密码由服务器环境变量 AMI_ADMIN_PASSWORD 管理", "error");
+  passTarget = user;
+  $("pass-title").textContent = user ? `重置「${user.username}」的密码` : "修改密码";
+  $("pass-desc").textContent = user ? "把新密码发给对方。对方已经登录的地方会被退出。" : "改完之后，其它设备上的登录会失效。";
+  $("pass-old-wrap").hidden = !!user;
+  $("pass-old").value = $("pass-new").value = "";
+  $("pass-new").type = user ? "text" : "password";
+  $("pass-err").textContent = "";
+  $("dlg-pass").showModal();
+  (user ? $("pass-new") : $("pass-old")).focus();
+}
+let passTarget = null;
+
+async function userAction(id, act) {
+  const u = users.find(x => x.id === id);
+  const body = act === "admin" ? { is_admin: !u.is_admin } : { disabled: !u.disabled };
+  if (act === "disable" && !u.disabled && !await confirmBox({ title: `停用「${u.username}」？`,
+      message: "对方会立刻退出登录，名下 agent 的 key 也全部失效。之后可以随时恢复。", ok: "停用", danger: true })) return;
+  if (act === "admin" && !u.is_admin && !await confirmBox({ title: `把「${u.username}」设为管理员？`,
+      message: "管理员能看到并管理所有人的 agent、动态和任务，也能管理用户。", ok: "设为管理员" })) return;
+  try { const r = await api(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }); Object.assign(u, r.user); render(); toast("已更新"); }
+  catch (e) { toast(e.message, "error"); }
+}
+
+async function taskAction(id, act) {
+  if (act === "cancel" && !await confirmBox({ title: `取消任务 #${id}？`, message: "排队中的不会再被领走；正在执行的，接收方再回报时会被拒绝。", ok: "取消任务", danger: true })) return;
+  try { const r = await api(`/api/tasks/${id}/${act}`, { method: "POST" }); taskDetail = { id, task: { ...taskDetail.task, ...r.task } }; render(); toast(act === "cancel" ? "已取消" : "已重新排队"); }
+  catch (e) { toast(e.message, "error"); }
+}
+
+async function runReport(id) {
+  try {
+    const r = await api(`/api/agents/${id}/report`, { method: "POST" });
+    upsert(r.agent);
+    if (agentReports.id === id && agentReports.items && !agentReports.items.some(x => x.id === r.report.id)) agentReports.items.unshift(r.report);
+    render(); toast("已请它汇报，等它回报");
+  } catch (e) { toast(e.message, "error"); }
+}
+async function saveReportOn(id, on) {
+  try { const r = await api(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify({ report: on }) }); upsert(r.agent); render(); toast(on ? `每 ${reportHours} 小时汇报一次` : "已关闭定时汇报"); }
+  catch (e) { toast(e.message, "error"); render(); }
+}
+
+async function runCheck(id) {
+  try { const r = await api(`/api/agents/${id}/check`, { method: "POST" }); upsert(r.agent); render(); toast("已派出自检任务，等 agent 回报"); }
+  catch (e) { toast(e.message, "error"); }
+}
+let checkTimer;
+function saveCheckAt(id, delay) {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(async () => {
+    const on = $("chk-on")?.checked, at = $("chk-at")?.value;
+    if (on === undefined || on && !at) return;
+    try {
+      const r = await api(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify({ check_at: on ? at : "" }) });
+      upsert(r.agent); render(); toast(on ? `每天 ${at} 自检` : "已关闭每日自检");
+    } catch (e) { toast(e.message, "error"); render(); }
+  }, delay);
+}
+
+function openNotify() {
+  $("notify-url").value = me.notify_url || "";
+  notifyMsg("机器人开了关键词校验的话，把「AMI」加进关键词。");
+  $("dlg-notify").showModal();
+  $("notify-url").focus();
+}
+function notifyMsg(text, cls = "") { $("notify-msg").className = `field-hint ${cls}`; $("notify-msg").textContent = text; }
+
+let keyDialogAgent = null;
+function showKey(agent, rotated) {
+  keyDialogAgent = agent;
+  $("key-title").textContent = rotated ? `「${agent.name}」已换新 key` : `「${agent.name}」已创建`;
+  $("key-box").innerHTML = `<span>${esc(agent.api_key)}</span><button class="icon-btn sm" data-act="copy-key" data-id="${agent.id}" title="复制 key" aria-label="复制 key">${icon("copy", 15)}</button>`;
+  $("key-guide").innerHTML = `${icon("copy")}复制接入说明`;
+  $("dlg-key").showModal();
+}
+
+async function rotate(id) {
+  const a = byId(id);
+  if (!await confirmBox({ title: `给「${a.name}」换新 key？`, message: "旧 key 会立刻失效，需要把新的接入说明发给这个 agent。", ok: "换 key" })) return;
+  try { const r = await api(`/api/agents/${id}/rotate`, { method: "POST" }); upsert(r.agent); render(); showKey(r.agent, true); }
+  catch (e) { toast(e.message, "error"); }
+}
+
+async function revoke(id) {
+  const a = byId(id);
+  if (!await confirmBox({ title: `吊销「${a.name}」？`, message: "它的 key 会立刻失效，且不能恢复。历史状态和动态会保留。", ok: "吊销", danger: true })) return;
+  try { const r = await api(`/api/agents/${id}`, { method: "DELETE" }); upsert(r.agent); render(); toast("已吊销"); }
+  catch (e) { toast(e.message, "error"); }
+}
+
+function upsert(agent) {
+  const i = agents.findIndex(a => a.id === agent.id);
+  if (i >= 0) agents[i] = agent; else agents.push(agent);
+  agents.sort((x, y) => (x.revoked - y.revoked) || (x.id - y.id));
+}
+
+async function logout() {
+  await fetch("/api/logout", { method: "POST" }).catch(() => {});
+  agents = []; feed = emptyFeed(); tasks = { key: null, items: [], hasMore: false, loading: false }; taskStats = null;
+  me = null; queues = []; users = null; scopedStats = { scope: null, s: null }; ui.tk = { status: "", queue: "", agent: "", q: "" };
+  reports = { latest: null, rounds: [], cells: [], every: 4, next: null }; roundView = { key: null, items: null }; agentReports = { id: null, items: null, hasMore: false, loading: false };
+  showLogin();
+}
+
+// 按钮、菜单、命令面板共用的动作；d 是 data-* 属性
+function doAct(act, d, ev) {
+  const id = Number(d.id);
+  switch (act) {
+    case "new-key":
+      askName({ title: "接入新 agent", desc: "给这个 agent 起个名字，方便在列表里认出它。创建后会生成它的 API key 和接入说明。", ok: "创建", group: true }, async (name, group) => {
+        const r = await api("/api/agents", { method: "POST", body: JSON.stringify({ name, group }) });
+        upsert(r.agent); ui.guideAgent = r.agent.id; render(); showKey(r.agent, false);
+        location.hash = agentHref(r.agent.id, "settings");
+      });
+      break;
+    case "rename":
+      askName({ title: "改名", desc: "只改显示的名字，key 不变。", ok: "保存", value: byId(id).name }, async name => {
+        const r = await api(`/api/agents/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+        upsert(r.agent); render(); toast("已改名");
+      });
+      break;
+    case "rotate": rotate(id); break;
+    case "revoke": revoke(id); break;
+    case "more": loadFeed(true).catch(() => {}); break;
+    case "text-more": openText.has(id) ? openText.delete(id) : openText.add(id); render(); break;
+    case "ev-level": ui.ev.level = d.l; refilter(); break;
+    case "ev-clear": ui.ev = { agent: "", level: "", q: "" }; refilter(); break;
+    case "new-task": openNewTask(d.q); break;
+    case "cap-task": {
+      const c = capCatalog().find(x => `${x.owner_id}|${x.kind}` === d.k);
+      if (c) openNewTask(d.q || capQueue(c), c);
+      break;
+    }
+    case "tk-queue": ui.tk.queue = ui.tk.queue === d.q ? "" : d.q; retask(); break;
+    case "atk": ui.atk = ui.atk === d.s ? "" : d.s; retask(); break;
+    case "new-user":
+      $("user-name").value = ""; $("user-pass").value = ""; $("user-admin").checked = false; $("user-err").textContent = "";
+      $("dlg-user").showModal(); $("user-name").focus();
+      break;
+    case "user-pass": openPass(users.find(u => u.id === id)); break;
+    case "user-admin": userAction(id, "admin"); break;
+    case "user-disable": userAction(id, "disable"); break;
+    case "tk-status": ui.tk.status = ui.tk.status === d.s ? "" : d.s; retask(); break;
+    case "tk-clear": ui.tk = { status: "", queue: "", agent: "", q: "" }; retask(); break;
+    case "tk-more": loadTasks(true).catch(() => {}); break;
+    case "task-cancel": taskAction(id, "cancel"); break;
+    case "task-retry": taskAction(id, "retry"); break;
+    case "copy-json": {
+      ev?.preventDefault();
+      const v = taskDetail.task?.[d.w];
+      copyText(typeof v === "string" ? v : JSON.stringify(v ?? null, null, 2), "已复制");
+      break;
+    }
+    case "check-now": runCheck(id); break;
+    case "report-now": runReport(id); break;
+    case "rp-more": loadAgentReports(true).catch(() => {}); break;
+    case "rr": ui.rr = d.r === ui.rr ? "" : d.r; roundView = { key: null, items: null }; render(); loadRound(ui.rr).catch(() => {}); break;
+    case "notify": ev?.preventDefault(); openNotify(); break;
+    case "pass": openPass(null); break;
+    case "go": location.hash = d.href; break;
+    case "theme": { const ks = Object.keys(THEMES); setTheme(ks[(ks.indexOf(theme) + 1) % ks.length]); toast(`主题：${THEMES[theme][0]}`); break; }
+    case "logout": logout(); break;
+    case "toggle-key": revealed.has(id) ? revealed.delete(id) : revealed.add(id); render(); break;
+    case "copy-key": copyText(byId(id).api_key, "key 已复制"); break;
+    case "copy-guide": {
+      const a = byId(id || Number($("guide-agent")?.value));
+      if (a) copyText(guideText(a), "接入说明已复制，发给 agent 就行");
+      break;
+    }
+    case "r-toggle": ui.closed.has(d.k) ? ui.closed.delete(d.k) : ui.closed.add(d.k); renderRoster(); break;
+  }
+}
+
+document.addEventListener("click", ev => {
+  if (!$("menu").hidden && !ev.target.closest("#menu") && !ev.target.closest("#btn-me")) closeMenu();
+  const ci = ev.target.closest("[data-ci]");
+  if (ci) return runCmd(cmd.items[Number(ci.dataset.ci)]);
+  const ea = ev.target.closest("[data-ev-agent]");
+  if (ea) ui.ev = { agent: ea.dataset.evAgent, level: "", q: "" };
+  const ta = ev.target.closest("[data-tk-agent], [data-tk-status], [data-tk-queue]");
+  if (ta) ui.tk = { status: ta.dataset.tkStatus || "", queue: ta.dataset.tkQueue || "", agent: ta.dataset.tkAgent || "", q: "" };
+  const at = ev.target.closest("[data-atk]");
+  if (at) ui.atk = at.dataset.atk;
+  const t = ev.target.closest("[data-act]");
+  if (!t) return;
+  if (t.closest("#menu")) closeMenu();
+  doAct(t.dataset.act, t.dataset, ev);
+});
+// 筛选条件变了：先保留旧列表，新结果到了再替换，避免闪一下
+function refilter() { setUnseen(0); render(); loadFeed().catch(() => {}); }
+function retask() { render(); loadTasks().catch(() => {}); loadTaskStats().catch(() => {}); }
+let searchTimer;
+document.addEventListener("input", ev => {
+  if (ev.target.id === "cq") { ui.cq = ev.target.value; render(); }
+  if (ev.target.id === "cmd-q") { cmd.i = 0; renderCmd(); }
+  if (ev.target.id === "task-kind") taskKindHint();
+  if (ev.target.id === "task-payload") payloadAuto = false;
+  if (ev.target.id === "eq") { ui.ev.q = ev.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(refilter, 300); }
+  if (ev.target.id === "tq") { ui.tk.q = ev.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(() => { render(); loadTasks().catch(() => {}); }, 300); }
+});
+document.addEventListener("change", ev => {
+  if (ev.target.id === "guide-agent") ui.guideAgent = Number(ev.target.value);
+  if (ev.target.id === "ev-agent") { ui.ev.agent = ev.target.value; refilter(); }
+  if (ev.target.id === "tk-agent") { ui.tk.agent = ev.target.value; retask(); }
+  if (ev.target.id === "tk-queue") { ui.tk.queue = ev.target.value; retask(); }
+  if (ev.target.id === "task-q") { taskQueueHint(); taskKindHint(); }
+  if (ev.target.id === "tk-st") { ui.tk.status = ev.target.value; retask(); }
+  if (ev.target.id === "rp-on") saveReportOn(Number(ev.target.dataset.id), ev.target.checked);
+  if (ev.target.id === "rr-sel") { ui.rr = ev.target.value; roundView = { key: null, items: null }; render(); loadRound(ui.rr).catch(() => {}); }
+  if (ev.target.id === "chk-on") { $("chk-at").disabled = !ev.target.checked; saveCheckAt(Number(ev.target.dataset.id), 0); }
+  if (ev.target.id === "chk-at") saveCheckAt(Number(ev.target.dataset.id), 800);   // 改时间时每改一位都会触发，等停下来再存
+});
+document.addEventListener("keydown", ev => {
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "k" && !$("shell").hidden) { ev.preventDefault(); $("dlg-cmd").open ? $("dlg-cmd").close() : openCmd(); return; }
+  if (ev.key === "Escape" && !$("menu").hidden) { closeMenu(); return; }
+  if (ev.key === "Escape" && ui.navOpen) { ui.navOpen = false; renderTop(); return; }
+  if (ev.target.id === "cmd-q") {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); cmd.i = (cmd.i + (ev.key === "ArrowDown" ? 1 : -1) + cmd.items.length) % Math.max(1, cmd.items.length); renderCmd(); }
+    if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); runCmd(cmd.items[cmd.i]); }
+  }
+});
+$("cmd-list").addEventListener("mousemove", ev => {
+  const ci = ev.target.closest("[data-ci]");
+  if (ci && Number(ci.dataset.ci) !== cmd.i) { cmd.i = Number(ci.dataset.ci); $("cmd-list").querySelectorAll(".cmd-it").forEach((b, i) => b.classList.toggle("sel", i === cmd.i)); }
+});
+$("new-pill").onclick = () => { window.scrollTo(0, 0); setUnseen(0); };
+$("key-guide").onclick = () => keyDialogAgent && copyText(guideText(keyDialogAgent), "接入说明已复制，发给 agent 就行");
+function groupHint() {
+  const g = $("name-group").value.trim(), mates = agents.filter(a => a.group === g && a.owner_id === me.id && !a.revoked).length;
+  $("name-group-hint").className = "field-hint";
+  $("name-group-hint").textContent = !g ? "不分组：只领公共池的任务，提交的任务也进公共池。"
+    : !/^[a-z0-9][a-z0-9-]{0,31}$/.test(g) ? "只能用小写字母、数字和 -，以字母或数字开头"
+    : mates ? `已有 ${mates} 个 agent 在「${g}」组，会和它们共享队列；key 形如 ami_${g}_…` : `新分组，key 形如 ami_${g}_…`;
+}
+$("name-group").oninput = groupHint;
+$("name-form").onsubmit = async ev => {
+  ev.preventDefault();
+  const name = $("name-input").value.trim();
+  if (!name) { $("name-err").textContent = "请填写名字"; return; }
+  $("name-ok").disabled = true;
+  try { await nameAction(name, $("name-group").value.trim()); $("dlg-name").close(); }
+  catch (e) { $("name-err").textContent = e.message; }
+  $("name-ok").disabled = false;
+};
+$("task-form").onsubmit = async ev => {
+  ev.preventDefault();
+  const raw = $("task-payload").value.trim();
+  let payload = null;
+  if (raw) { try { payload = JSON.parse(raw); } catch { payload = raw; } }   // 不是 JSON 就当文本发
+  const num = id => { const n = parseInt($(id).value, 10); return Number.isNaN(n) ? null : n; };
+  $("task-ok").disabled = true;
+  try {
+    const q = $("task-q").value, i = q.indexOf(":");
+    const r = await api("/api/tasks", { method: "POST", body: JSON.stringify({ owner_id: Number(q.slice(0, i)), group: q.slice(i + 1), kind: $("task-kind").value.trim() || "task",
+      payload, priority: num("task-pri"), max_attempts: num("task-att"), timeout: num("task-timeout") }) });
+    $("dlg-task").close();
+    $("task-payload").value = ""; payloadAuto = false;
+    toast(`已派出任务 #${r.task.id}`);
+    location.hash = `#/tasks/${r.task.id}`;
+  } catch (e) { $("task-err").textContent = e.message; }
+  $("task-ok").disabled = false;
+};
+$("notify-test").onclick = async () => {
+  const url = $("notify-url").value.trim();
+  if (!url) return notifyMsg("先填一个地址", "warn");
+  $("notify-test").disabled = true;
+  notifyMsg("发送中…");
+  try { await api("/api/me/notify/test", { method: "POST", body: JSON.stringify({ url }) }); notifyMsg("已发送，去看看收到没有", "ok"); }
+  catch (e) { notifyMsg(e.message, "warn"); }
+  $("notify-test").disabled = false;
+};
+$("notify-form").onsubmit = async ev => {
+  ev.preventDefault();
+  $("notify-ok").disabled = true;
+  try {
+    const r = await api("/api/me/notify", { method: "PUT", body: JSON.stringify({ url: $("notify-url").value.trim(), origin: location.origin }) });
+    me.notify_url = r.notify_url; render(); $("dlg-notify").close(); toast(r.notify_url ? "已保存通知地址" : "已关闭通知");
+  } catch (e) { notifyMsg(e.message, "warn"); }
+  $("notify-ok").disabled = false;
+};
+$("user-form").onsubmit = async ev => {
+  ev.preventDefault();
+  $("user-ok").disabled = true;
+  try {
+    const r = await api("/api/users", { method: "POST", body: JSON.stringify({ username: $("user-name").value.trim(), password: $("user-pass").value, is_admin: $("user-admin").checked }) });
+    users.push(r.user); render(); $("dlg-user").close(); toast(`已添加「${r.user.username}」`);
+  } catch (e) { $("user-err").textContent = e.message; }
+  $("user-ok").disabled = false;
+};
+$("pass-form").onsubmit = async ev => {
+  ev.preventDefault();
+  $("pass-ok").disabled = true;
+  try {
+    if (passTarget) await api(`/api/users/${passTarget.id}`, { method: "PATCH", body: JSON.stringify({ password: $("pass-new").value }) });
+    else await api("/api/me/password", { method: "POST", body: JSON.stringify({ old: $("pass-old").value, new: $("pass-new").value }) });
+    $("dlg-pass").close(); toast(passTarget ? "密码已重置" : "密码已修改");
+  } catch (e) { $("pass-err").textContent = e.message; }
+  $("pass-ok").disabled = false;
+};
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close());
+document.querySelectorAll("dialog").forEach(d => {
+  const outside = ev => { const r = d.getBoundingClientRect(); return ev.target === d && (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom); };
+  let down = false;
+  d.addEventListener("pointerdown", ev => { down = outside(ev); });
+  d.addEventListener("click", ev => { if (down && outside(ev)) d.id === "dlg-confirm" ? $("cf-cancel").click() : d.close(); down = false; });
+});
+
+/* ================= 路由 / 实时 / 登录 ================= */
+function parseRoute() {
+  let [, page = "overview", id, tab] = location.hash.replace(/^#/, "").split("/");
+  if (page === "docs") page = "guide";
+  if (!page || page === "keys" || page === "agents" && !id) page = "overview";   // 旧链接：API Keys 并进了 agent 的「设置」
+  const prev = route;
+  route = { page, id: id ? Number(id) : null, tab: tab || "overview" };
+  if (route.page !== "agents" || route.id !== prev.id) ui.atk = "";
+  if (feedKey() !== feed.key) feed = emptyFeed();
+  if (tasksKey() !== tasks.key) tasks = { key: null, items: [], hasMore: false, loading: false };
+  ui.navOpen = false;
+  setUnseen(0);
+  render();
+  window.scrollTo(0, 0);
+  loadFeed().catch(() => {});
+  loadTasks().catch(() => {});
+  if (route.page === "tasks" && route.id) loadTask(route.id);
+  loadTaskStats().catch(() => {});
+  loadUsers().catch(() => {});
+  loadReports().catch(() => {});
+  loadRound(ui.rr).catch(() => {});
+  if (route.page === "agents" && route.id && agentReports.id !== route.id) loadAgentReports().catch(() => {});
+}
+window.addEventListener("hashchange", parseRoute);
+
+function connect() {
+  if (es) es.close();
+  const setConn = (on, text) => { $("conn-dot").className = "dot" + (on ? " on" : ""); $("conn").textContent = text; $("conn-wrap").title = text; };
+  es = new EventSource("/api/stream");
+  es.addEventListener("hello", () => {
+    setConn(true, "实时");
+    loadAgents().then(() => { render(); return loadFeed(); }).catch(() => {});
+    loadTasks().catch(() => {});
+    loadTaskStats().catch(() => {});
+    if (route.page === "tasks" && route.id) loadTask(route.id);
+    refreshReports();
+    if (route.page === "agents" && route.id) { agentReports.id = null; loadAgentReports().catch(() => {}); }
+  });
+  es.addEventListener("report", ev => {
+    const r = JSON.parse(ev.data);
+    if (route.page === "reports") refreshReports();
+    if (agentReports.id === r.agent_id && agentReports.items) {
+      const i = agentReports.items.findIndex(x => x.id === r.id);
+      if (i >= 0) agentReports.items[i] = r; else if (!agentReports.items.length || r.id > agentReports.items[0].id) agentReports.items.unshift(r);
+      render();
+    }
+  });
+  es.addEventListener("task", ev => {
+    const t = JSON.parse(ev.data), f = taskFilter();
+    refreshTaskStats();
+    if (f && tasks.key && tasks.key === tasksKey()) {
+      const i = tasks.items.findIndex(x => x.id === t.id);
+      if (i >= 0) { if (taskMatches(t, f)) tasks.items[i] = t; else tasks.items.splice(i, 1); }
+      else if (taskMatches(t, f) && (!tasks.hasMore || !tasks.items.length || t.id > tasks.items[tasks.items.length - 1].id)) {
+        tasks.items.push(t);
+        tasks.items.sort((x, y) => y.id - x.id);
+        freshTask.set(t.id, Date.now());
+        setTimeout(() => freshTask.delete(t.id), 2500);
+      }
+    }
+    if (route.page === "tasks" && route.id === t.id) loadTask(t.id);
+    render();
+  });
+  es.addEventListener("agent", ev => {
+    upsert(JSON.parse(ev.data));
+    if (route.page === "tasks" && !route.id || route.page === "overview") refreshTaskStats();   // 队列卡片上的在线 agent 数
+    render();
+  });
+  es.addEventListener("event", ev => {
+    const { agent_id, event } = JSON.parse(ev.data), s = feedSpec();
+    if (!feedWants(agent_id, event) || feed.events.some(e => e.id === event.id)) return;
+    feed.events.unshift({ agent_id, ...event });
+    if (!s.paged) feed.events.length = Math.min(feed.events.length, s.limit);
+    if (feed.counts && now() - event.ts < 86400) {
+      feed.counts.total++;
+      if (event.level in feed.counts) feed.counts[event.level]++;
+    }
+    fresh.set(event.id, Date.now());
+    setTimeout(() => { fresh.delete(event.id); document.querySelector(`.ev[data-eid="${event.id}"]`)?.classList.remove("fresh"); }, 2500);
+    if (route.page === "activity" && scrollY > 300) setUnseen(ui.unseen + 1);
+    render();
+  });
+  es.onerror = () => {
+    setConn(false, "重连中…");
+    api("/api/me").catch(() => {});   // 登录过期时 SSE 会一直 401，用普通请求确认
+  };
+}
+
+function showLogin(msg = "") {
+  if (es) { es.close(); es = null; }
+  document.querySelectorAll("dialog[open]").forEach(d => d.close());
+  closeMenu();
+  $("login-err").textContent = msg;
+  document.title = "AMI 中控";
+  $("shell").hidden = true;
+  $("login").hidden = false;
+  $("login-user").focus();
+}
+
+async function start() {
+  const res = await fetch("/api/me").catch(() => null);
+  if (!res || !res.ok) return showLogin();   // 没登录过：直接显示登录页，不提示「过期」
+  me = await res.json();
+  try { await loadAgents(); } catch { return; }
+  $("avatar").textContent = me.username.slice(0, 1).toUpperCase();
+  $("btn-me").title = me.username;
+  $("login").hidden = true;
+  $("shell").hidden = false;
+  parseRoute();
+  connect();
+}
+
+$("btn-cmd").innerHTML = `${icon("search", 15)}<span>搜索 / 跳转…</span><kbd>${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl "}K</kbd>`;
+$("btn-cmd").onclick = openCmd;
+$("cmd-ic").innerHTML = icon("search", 18);
+$("btn-new-agent").innerHTML = icon("plus", 15);
+$("btn-new-agent").onclick = () => doAct("new-key", {});
+$("btn-new-agent-2").innerHTML = `${icon("plus", 14)}接入 agent`;
+$("btn-guide").innerHTML = `${icon("guide", 14)}接入指南`;
+$("btn-dispatch").innerHTML = `${icon("send", 14)}<span class="lbl">派任务</span>`;
+$("btn-burger").innerHTML = icon("menu", 18);
+$("btn-burger").onclick = () => { ui.navOpen = !ui.navOpen; renderTop(); };
+$("scrim").onclick = () => { ui.navOpen = false; renderTop(); };
+$("btn-notify").innerHTML = icon("bell");
+$("btn-notify").onclick = openNotify;
+$("btn-theme").onclick = () => doAct("theme", {});
+$("btn-me").onclick = ev => { ev.stopPropagation(); $("menu").hidden ? openMenu($("btn-me"), userMenu()) : closeMenu(); };
+window.addEventListener("resize", closeMenu);
+setTheme(theme);
+$("login-form").onsubmit = async ev => {
+  ev.preventDefault();
+  const btn = ev.submitter;
+  btn.disabled = true;
+  try {
+    await api("/api/login", { method: "POST", body: JSON.stringify({ username: $("login-user").value.trim(), password: $("login-pass").value }) });
+    $("login-pass").value = "";
+    $("login-err").textContent = "";
+    await start();
+  } catch (e) { $("login-err").textContent = e.message; }
+  btn.disabled = false;
+};
+// 「x 分钟前」和在线状态随时间变化；有弹窗、菜单打开或在接入指南页时不刷，免得打断
+setInterval(() => { if (!$("shell").hidden && !document.querySelector("dialog[open]") && $("menu").hidden && route.page !== "guide") render(); }, 5000);
+
+start();
+</script>
+</body>
+</html>
